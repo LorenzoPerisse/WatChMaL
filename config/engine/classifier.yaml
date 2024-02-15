@@ -1,7 +1,8 @@
 _target_: watchmal.engine.classification.ClassifierEngine
-truth_key: 'labels'
-label_set:
-  - 0
-  - 1
-  - 2
-  - 3
+
+truth_key: 'target'
+
+# Mais tu sers à rien toi ?
+# label_set:
+#   - 0  # Would be 0 (First label - for a softmax argmax call for ex.)
+#   - 1  # Would be 1 (Second label)

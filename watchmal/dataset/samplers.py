@@ -11,10 +11,51 @@ from torch.utils.data.distributed import DistributedSampler
 from operator import itemgetter
 from typing import Optional
 
+from typing import Iterator, Optional, Sized, Sequence
+
 
 def SubsetSequentialSampler(indices):
     return indices
 
+
+class SubsetSequentialSampler_v2(Sampler[int]):
+    r"""Samples elements sequentially, always in the same order.
+
+    Args:
+        indices (sequence): a sequence to sample (sequentially) from
+    """
+
+    def __init__(self, indices: Sequence[int]) -> None:
+        self.indices = indices
+
+    def __iter__(self) -> Iterator[int]:
+        return iter(self.indices)
+
+    def __len__(self) -> int:
+        return len(self.indices)
+
+
+class SubsetRandomSampler(Sampler[int]):
+    r"""Samples elements randomly from a given list of indices, without replacement.
+
+    Args:
+        indices (sequence): a sequence of indices
+        generator (Generator): Generator used in sampling.
+    """
+
+    indices: Sequence[int]
+
+    def __init__(self, indices: Sequence[int], generator=None) -> None:
+        self.indices = indices
+        self.generator = generator
+
+    def __iter__(self) -> Iterator[int]:
+        for i in torch.randperm(len(self.indices), generator=self.generator):
+            yield self.indices[i]
+
+    def __len__(self) -> int:
+        return len(self.indices)
+    
 
 class DistributedSamplerWrapper(DistributedSampler):
     """

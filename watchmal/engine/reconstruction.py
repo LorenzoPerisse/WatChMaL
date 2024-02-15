@@ -17,7 +17,7 @@ import torch
 from torch.nn.parallel import DistributedDataParallel
 
 # WatChMaL imports
-from watchmal.dataset.data_utils import get_data_loader
+from watchmal.dataset.data_utils import get_data_loader, get_data_loader_v2, get_dataset
 from watchmal.utils.logging_utils import CSVLog
 
 log = logging.getLogger(__name__)
@@ -40,31 +40,42 @@ class ReconstructionEngine(ABC):
             The path to store outputs in.
         """
         # create the directory for saving the log and dump files
-        self.epoch = 0
-        self.step = 0
-        self.iteration = 0
-        self.best_validation_loss = 1.0e10
         self.dump_path = dump_path
+
         self.rank = rank
         self.model = model
         self.device = torch.device(gpu)
         self.truth_key = truth_key
 
+        # variables to monitor training pipelines
+        self.epoch = 0
+        self.step = 0
+        self.iteration = 0
+        self.best_validation_loss = 1.0e10
+
+
         # Set up the parameters to save given the model type
         if isinstance(self.model, DistributedDataParallel):
             self.is_distributed = True
+
             self.module = self.model.module
             self.n_gpus = torch.distributed.get_world_size()
         else:
             self.is_distributed = False
             self.module = self.model
 
+        self.dataset      = None
+        self.split_path   = ""
         self.data_loaders = {}
 
         # define the placeholder attributes
-        self.data = None
+        self.data   = None
         self.target = None
-        self.loss = None
+        self.loss   = None
+
+        self.criterion = None
+        self.optimizer = None
+        self.scheduler = None
 
         # logging attributes
         self.train_log = CSVLog(self.dump_path + f"log_train_{self.rank}.csv")
@@ -72,9 +83,7 @@ class ReconstructionEngine(ABC):
         if self.rank == 0:
             self.val_log = CSVLog(self.dump_path + "log_val.csv")
 
-        self.criterion = None
-        self.optimizer = None
-        self.scheduler = None
+
 
     def configure_loss(self, loss_config):
         self.criterion = instantiate(loss_config)
@@ -86,6 +95,53 @@ class ReconstructionEngine(ABC):
     def configure_scheduler(self, scheduler_config):
         """Instantiate a scheduler from a hydra config."""
         self.scheduler = instantiate(scheduler_config, optimizer=self.optimizer)
+
+
+
+    def configure_dataset(self, data_config):
+        """
+        Set up the dataset according to the data_config and the transform_config
+        There is only dataset for training and testing. The split train/test is made by the sampler 
+        initialized with the dataloader.
+        """
+        #print(f"Dataset config : {data_config.dataset}")
+        self.split_path = data_config.dataset.split_path # Initialized for data_loaders
+        self.dataset = get_dataset(data_config.dataset.parameters, data_config.transforms)
+    
+    def configure_data_loaders_v2(self, loaders_config):
+        """
+        Set up data loaders from loaders hydra configs for the data config, and a list of data loader configs.
+
+        Parameters
+        ==========
+        data_config
+            Hydra config specifying dataset.
+        loaders_config
+            Hydra config specifying a list of dataloaders.
+        is_distributed : bool
+            Whether running in multiprocessing mode.
+        seed : int
+            Random seed to use to initialize dataloaders.
+        """
+        #print(loaders_config)
+        print("\n")
+        for name, loader_config in loaders_config.items():
+            print(f" Name : {name}, Config : {loader_config}")
+
+            #loader_config = {'is_distributed': is_distributed, 'seed': seed} | loader_config
+            #print(f" Name : {name}, Config : {loader_config}")
+           
+            self.data_loaders[name] = get_data_loader_v2(
+                split_path=self.split_path,
+                dataset=self.dataset,
+                **loader_config
+            )
+        print("\n")
+        # Instead, note the self.datatets
+        # for name, loader_config in loaders_config.items():
+        #    self.data_loaders[name] = get_data_loader(self.datasets, **loader_config, is_distributed=is_distributed, seed=seed)
+
+
 
     def configure_data_loaders(self, data_config, loaders_config, is_distributed, seed):
         """
@@ -102,8 +158,14 @@ class ReconstructionEngine(ABC):
         seed : int
             Random seed to use to initialize dataloaders.
         """
+
         for name, loader_config in loaders_config.items():
             self.data_loaders[name] = get_data_loader(**data_config, **loader_config, is_distributed=is_distributed, seed=seed)
+
+        # Instead, note the self.datatets
+        # for name, loader_config in loaders_config.items():
+        #    self.data_loaders[name] = get_data_loader(self.datasets, **loader_config, is_distributed=is_distributed, seed=seed)
+
 
     def get_synchronized_outputs(self, output_dict):
         """
@@ -156,15 +218,17 @@ class ReconstructionEngine(ABC):
                 global_metric_dict[name] = tensor.item()
         return global_metric_dict
 
+
+
     @abstractmethod
     def forward(self, train=True):
         pass
 
     def backward(self):
         """Backward pass using the loss computed for a mini-batch"""
-        self.optimizer.zero_grad()  # reset accumulated gradient
-        self.loss.backward()  # compute new gradient
-        self.optimizer.step()  # step params
+        self.optimizer.zero_grad()  # reset gradients from last step
+        self.loss.backward()        # compute the new gradients for this iteration
+        self.optimizer.step()       # perform gradient descent on all the parameters of the model
 
     def train(self, epochs=0, val_interval=20, num_val_batches=4, checkpointing=False, save_interval=None):
         """
@@ -185,20 +249,26 @@ class ReconstructionEngine(ABC):
         """
         if self.rank == 0:
             log.info(f"Training {epochs} epochs with {num_val_batches}-batch validation each {val_interval} iterations")
+        
         # set model to training mode
         self.model.train()
+        
         # initialize epoch and iteration counters
         self.epoch = 0
         self.iteration = 0
         self.step = 0
-        # keep track of the validation loss
-        self.best_validation_loss = np.inf
+        
+        self.best_validation_loss = np.inf # used keep track of the validation loss
+        
         # initialize the iterator over the validation set
         val_iter = iter(self.data_loaders["validation"])
-        # global training loop for multiple epochs
+        
+       
         start_time = datetime.now()
         step_time = start_time
         epoch_start_time = start_time
+
+        # global training loop for multiple epochs
         for self.epoch in range(epochs):
             if self.rank == 0:
                 if self.epoch > 0:
@@ -208,45 +278,61 @@ class ReconstructionEngine(ABC):
 
             train_loader = self.data_loaders["train"]
             self.step = 0
+            
             # update seeding for distributed samplers
             if self.is_distributed:
                 train_loader.sampler.set_epoch(self.epoch)
-            # local training loop for batches in a single epoch
+           
+           # local training loop for batches in a single epoch
             steps_per_epoch = len(train_loader)
             for self.step, train_data in enumerate(train_loader):
+                
                 # Train on batch
                 self.data = train_data['data'].to(self.device)
                 self.target = train_data[self.truth_key].to(self.device)
+                # print(f" Train data : {train_data}\n")
+                
                 # Call forward: make a prediction & measure the average error using data = self.data
                 outputs, metrics = self.forward(True)
                 metrics = {k: v.item() for k, v in metrics.items()}
+                
                 # Call backward: back-propagate error and update weights using loss = self.loss
                 self.backward()
+                
                 # run scheduler
                 if self.scheduler is not None:
                     self.scheduler.step()
+                
                 # update the epoch and iteration
                 self.step += 1
                 self.iteration += 1
+                
                 # get relevant attributes of result for logging
                 log_entries = {"iteration": self.iteration, "epoch": self.epoch, **metrics}
+                
                 # record the metrics for the mini-batch in the log
                 self.train_log.log(log_entries)
+               
                 # run validation on given intervals
                 if self.iteration % val_interval == 0:
+                    
                     if self.rank == 0:
                         previous_step_time = step_time
                         step_time = datetime.now()
                         average_step_time = (step_time - previous_step_time)/val_interval
+                        
                         print(f"Iteration {self.iteration}, Epoch {self.epoch+1}/{epochs}, Step {self.step}/{steps_per_epoch}"
                               f" Step time {average_step_time},"
                               f" Epoch time {step_time-epoch_start_time}"
                               f" Total time {step_time-start_time}")
                         print(f"  Training   {', '.join(f'{k}: {v:.5g}' for k, v in metrics.items())}")
+                    
                     self.validate(val_iter, num_val_batches, checkpointing)
+            
             # save state at end of epoch
             if self.rank == 0 and (save_interval is not None) and ((self.epoch+1) % save_interval == 0):
                 self.save_state(suffix=f'_epoch_{self.epoch+1}')
+        
         self.train_log.close()
         if self.rank == 0:
             log.info(f"Epoch {self.epoch} completed in {datetime.now() - epoch_start_time}")
@@ -269,19 +355,23 @@ class ReconstructionEngine(ABC):
         # set model to eval mode
         self.model.eval()
         val_metrics = None
-        for val_batch in range(num_val_batches):
+        for val_batch in range(num_val_batches): # num_val_batches is defined in grant_gnn_train et pas basé sur le val_dataset ??
             # get validation data mini-batch
             try:
                 val_data = next(val_iter)
+            
             except StopIteration:
                 del val_iter
                 if self.is_distributed:
                     self.data_loaders["validation"].sampler.set_epoch(self.data_loaders["validation"].sampler.epoch+1)
+                
                 val_iter = iter(self.data_loaders["validation"])
                 val_data = next(val_iter)
+            
             # extract the event data and target from the input data dict
             self.data = val_data['data'].to(self.device)
             self.target = val_data[self.truth_key].to(self.device)
+            
             # evaluate the network
             outputs, metrics = self.forward(False)
             if val_metrics is None:
@@ -289,9 +379,11 @@ class ReconstructionEngine(ABC):
             else:
                 for k, v in metrics.items():
                     val_metrics[k] += v
+
         # record the validation stats to the csv
         val_metrics = {k: v/num_val_batches for k, v in val_metrics.items()}
         val_metrics = self.get_synchronized_metrics(val_metrics)
+
         if self.rank == 0:
             log_entries = {"iteration": self.iteration, "epoch": self.epoch, **val_metrics, "saved_best": False}
             # Save if this is the best model so far
@@ -307,7 +399,8 @@ class ReconstructionEngine(ABC):
             if checkpointing:
                 self.save_state()
             self.val_log.log(log_entries)
-        # return model to training mode
+        
+        # return model to training mode - why is it needed here ?
         self.model.train()
 
     def evaluate(self, report_interval=20):
@@ -321,7 +414,9 @@ class ReconstructionEngine(ABC):
             start_time = datetime.now()
             step_time = start_time
             steps_per_epoch = len(self.data_loaders["test"])
+            
             for self.step, eval_data in enumerate(self.data_loaders["test"]):
+                
                 # load data
                 self.data = eval_data['data'].to(self.device)
                 self.target = eval_data[self.truth_key].to(self.device)
@@ -329,17 +424,19 @@ class ReconstructionEngine(ABC):
                 outputs, metrics = self.forward(train=False)
                 # Add the local result to the final result
                 if self.step == 0:
-                    indices = eval_data['indices']
+                    #indices = eval_data['indices']
                     targets = self.target
                     eval_outputs = outputs
                     eval_metrics = metrics
                 else:
-                    indices = torch.cat((indices, eval_data['indices']))
+                    #indices = torch.cat((indices, eval_data['indices']))
                     targets = torch.cat((targets, self.target))
+                    
                     for k in eval_outputs.keys():
                         eval_outputs[k] = torch.cat((eval_outputs[k], outputs[k]))
                     for k in eval_metrics.keys():
                         eval_metrics[k] += metrics[k]
+               
                 # print the metrics at given intervals
                 if self.rank == 0 and self.step % report_interval == 0:
                     previous_step_time = step_time
@@ -349,13 +446,23 @@ class ReconstructionEngine(ABC):
                           f" Evaluation {', '.join(f'{k}: {v:.5g}' for k, v in metrics.items())},"
                           f" Step time {average_step_time},"
                           f" Total time {step_time-start_time}")
+       
         for k in eval_metrics.keys():
             eval_metrics[k] /= self.step+1
+       
+        # if self.is_distributed:
+        #     indices = self.data_loaders['test'].sampler.sampler.indices
+        # else :
+        #     indices = self.data_loaders['test'].sampler.indices 
+
+        indices = torch.tensor(indices)
         eval_outputs["indices"] = indices.to(self.device)
         eval_outputs[self.truth_key] = targets
+       
         # Gather results from all processes
         eval_metrics = self.get_synchronized_metrics(eval_metrics)
         eval_outputs = self.get_synchronized_outputs(eval_outputs)
+        
         if self.rank == 0:
             # Save overall evaluation results
             log.info("Saving Data...")

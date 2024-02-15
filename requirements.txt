@@ -5,3 +5,37 @@ h5py
 numpy
 uproot
 matplotlib
+
+
+train {
+    'epochs': 10, 'val_interval': 1, 'num_val_batches': 1, 
+    'checkpointing': False, 
+    'data_loaders': {
+        'train': {'split_key': 'train_idx', 
+            'batch_size': 32, 'num_workers': 8, 'is_graph': True, 
+            'drop_last': True, 
+            'sampler': {'_target_': 'torch.utils.data.sampler.SubsetRandomSampler'}
+        }, 
+        
+        'validation': {'split_key': 'val_idxs', 
+            'batch_size': 4, 'num_workers': 8, 
+            'is_graph': True, 'drop_last': True, 
+            'sampler': {'_target_': 'torch.utils.data.sampler.SubsetRandomSampler'}
+        }
+    }, 
+    'optimizers': {'_target_': 'torch.optim.Adam', 'lr': 0.002, 'weight_decay': 0}, 
+    'loss': {'_target_': 'torch.nn.CrossEntropyLoss', 'weight': None}
+}
+
+restore_best_state {'name': None}
+
+evaluate {'report_interval': 10, 
+    'data_loaders': {
+        'test': {
+            'is_graph': True, 'split_key': 'test_idxs', 
+            'batch_size': 2, 'num_workers': 4, 
+            'sampler': {
+                '_target_': 'watchmal.dataset.samplers.SubsetSequentialSampler'}
+        }
+    }
+}

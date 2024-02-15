@@ -1,0 +1,18 @@
+pre_transforms:
+  kNN:
+    _target_: torch_geometric.transforms.KNNGraph
+    k: 10
+
+transforms:
+
+  Normalize:
+    _target_: watchmal.dataset.gnn.transformations.Normalize
+        
+    feat_norm: 
+      - [3240., 3240., 3287.55, 2000.]
+      - [-3240., -3240.,  -3287.55, 0.]
+
+  DataToWatchmalDict:
+    _target_: watchmal.dataset.gnn.transformations.DataToWatchmalDict
+
+    target_to_type: int16

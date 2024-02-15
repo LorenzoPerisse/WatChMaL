@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 # WatChMaL imports
-from watchmal.dataset.h5_dataset import H5Dataset
+from watchmal.dataset.common_classes.h5_dataset import H5Dataset
 import watchmal.dataset.data_utils as du
 
 PMTS_PER_MPMT = 19
@@ -58,13 +58,18 @@ class CNNmPMTDataset(H5Dataset):
 
         self.mpmt_positions = np.load(mpmt_positions_file)['mpmt_image_positions']
         self.transforms = du.get_transformations(self, transforms)
+
         if self.transforms is None:
             self.transforms = []
+       
         if channels is None:
             channels = ['charge', 'time']
+        
         if collapse_mpmt_channels is None:
             collapse_mpmt_channels = []
+        
         self.collapse_channels = collapse_mpmt_channels
+       
         if channel_scaling is None:
             channel_scaling = {}
         self.scaling = channel_scaling
@@ -74,9 +79,11 @@ class CNNmPMTDataset(H5Dataset):
         self.channel_ranges = {}
         self.h_flip_permutation = []
         self.v_flip_permutation = []
+     
         for c in channels:
             channel_depth = 2 if c in collapse_mpmt_channels else 19 if c in ("charge", "time") else 1
             self.channel_ranges[c] = range(self.image_depth, self.image_depth+channel_depth)
+            
             # permutation maps are needed for applying transformations to the image that affect mPMT channel ordering
             if channel_depth == PMTS_PER_MPMT:
                 self.v_flip_permutation.extend(VERTICAL_FLIP_MPMT_MAP + self.image_depth)
@@ -85,17 +92,21 @@ class CNNmPMTDataset(H5Dataset):
                 self.v_flip_permutation = np.extend(self.channel_ranges[c])
                 self.h_flip_permutation = np.extend(self.channel_ranges[c])
             self.image_depth += channel_depth
+      
         self.h_flip_permutation = np.array(self.h_flip_permutation)
         self.v_flip_permutation = np.array(self.v_flip_permutation)
         self.rotate_permutation = self.h_flip_permutation[self.v_flip_permutation]
 
         # make some index expressions for different parts of the image, to use in transformations etc
         rows, counts = np.unique(self.mpmt_positions[:, 0], return_counts=True)  # count occurrences of each row
+       
         # barrel rows are those where the row appears in mpmt_positions as many times as the image width
         barrel_rows = [row for row, count in zip(rows, counts) if count == self.image_width]
+       
         # endcap size is the number of rows before the first barrel row
         self.endcap_size = min(barrel_rows)
         self.barrel = np.s_[..., self.endcap_size:max(barrel_rows) + 1, :]
+       
         # endcaps are assumed to be within squares centred above and below the barrel
         endcap_left = (self.image_width - self.endcap_size) // 2
         endcap_right = endcap_left + self.endcap_size
@@ -122,6 +133,7 @@ class CNNmPMTDataset(H5Dataset):
         """Returns image-like event data array (channels, rows, columns) for an event at a given index."""
         data_dict = super().__getitem__(item)
         hit_data = {"charge": self.event_hit_charges, "time": self.event_hit_times}
+        
         # apply scaling to channels
         for c, (offset, scale) in self.scaling.items():
             hit_data[c] = (hit_data[c] - offset)/scale
@@ -132,11 +144,15 @@ class CNNmPMTDataset(H5Dataset):
             if c in self.collapse_channels:
                 channel_data = collapse_channel(channel_data)
             data[r] = channel_data
+
         # Apply transformations
         data_dict["data"] = data
         for t in self.transforms:
             data_dict = t(data_dict)
+       
+       # Convertion to Tensor
         data_dict["data"] = torch.from_numpy(data_dict["data"])
+        
         return data_dict
 
     def horizontal_image_flip(self, data):

@@ -1,0 +1,33 @@
+epochs: 50
+
+val_interval: 20
+num_val_batches: 5
+
+checkpointing: False
+
+# To custom the dataloader
+# the parameters are given to get_data_loader in data_utils.py
+data_loaders:
+
+  train:
+    split_key: train_idxs 
+    batch_size: 64
+    num_workers: 4
+
+    is_graph: True
+    drop_last: True 
+    
+    pin_memory: True
+    
+  validation:
+    split_key: val_idxs
+    batch_size: 64
+    num_workers: 4
+    
+    is_graph: True
+    drop_last: True
+
+    pin_memory: True
+
+
+# note : shuffle argument not needed, shuffling is handled by the samplers, not the dataloaders.
