@@ -50,11 +50,14 @@ class ResGateConv_v2(torch.nn.Module):
         # Define the hidden and normalization layers
         first_linear_in_features = 2 * conv_in_channels[-1] # Times 2 because of the torch.cat on gap and gsp
 
-        for j in range(len(linear_out_features)):
+        for j in range(len(linear_out_features) - 1):
             in_features  = first_linear_in_features if j == 0 else linear_out_features[j - 1]
             out_features = linear_out_features[j]
             self.hidden_layers.append(Linear(in_features, out_features))
             self.hl_norms.append(BatchNorm(out_features))
+
+        # Last layer doesn't have batch_norm
+        self.last_layer = Linear(linear_out_features[-2], linear_out_features[-1])
 
         self.drop = Dropout(p=dropout)
         self.activation_cl = ReLU()
@@ -63,7 +66,7 @@ class ResGateConv_v2(torch.nn.Module):
         # DO NOT add a sigmoid layer for the output (it is handled by the loss)
         # if it's not a sigmoid then define the output activation here
         # And then use BCELoss as a loss function (and not BCEwithlogitsloss)
-        self.output = None # ReLU()..
+        self.output_activation = None # ReLU()..
 
 
     def forward(self, data: torch_geometric.data.Data) -> torch.Tensor:
@@ -87,12 +90,15 @@ class ResGateConv_v2(torch.nn.Module):
         # Apply hidden layers
         for i, (hidden_layer, norm_layer) in enumerate(zip(self.hidden_layers, self.hl_norms)):
             out = hidden_layer(out)
+            out = self.activation_hl(out)   # Best thing would probably to add the last layer apart in __init__
+            out = norm_layer(out)
             
-            if i < len(self.hidden_layers) - 1: # The last block won't have an activation and a norm layer
-                out = self.activation_hl(out)   # Best thing would probably to add the last layer apart in __init__
-                out = norm_layer(out)
+            # if i < len(self.hidden_layers) - 1: # The last block won't have an activation and a norm layer
+            #     out = self.activation_hl(out)   # Best thing would probably to add the last layer apart in __init__
+            #     out = norm_layer(out)
 
-        if self.output is not None:
-            out = self.output(out)
+        out =  self.last_layer(out)
+        if self.output_activation is not None:
+            out = self.output_activation(out)
 
         return out
