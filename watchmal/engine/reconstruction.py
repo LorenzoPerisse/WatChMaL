@@ -16,6 +16,9 @@ from hydra.utils import instantiate
 import torch
 from torch.nn.parallel import DistributedDataParallel
 
+# pyg imports
+from torch_geometric.nn import summary
+
 # WatChMaL imports
 from watchmal.dataset.data_utils import get_data_loader, get_data_loader_v2, get_dataset
 from watchmal.utils.logging_utils import CSVLog
@@ -136,6 +139,7 @@ class ReconstructionEngine(ABC):
                 dataset=self.dataset,
                 **loader_config
             )
+       
         print("\n")
         # Instead, note the self.datatets
         # for name, loader_config in loaders_config.items():
@@ -222,7 +226,10 @@ class ReconstructionEngine(ABC):
 
     @abstractmethod
     def forward(self, train=True):
+        # best way would be t
         pass
+
+        
 
     def backward(self):
         """Backward pass using the loss computed for a mini-batch"""
@@ -247,7 +254,10 @@ class ReconstructionEngine(ABC):
         save_interval: int
             Number of epochs between each state save, by default don't save
         """
+
         if self.rank == 0:
+            data_point = self.data_loaders['train'].dataset[0]['data']
+            log.info(f"\n\nModel sumary : \n {summary(self.model, data_point)}\n\n")
             log.info(f"Training {epochs} epochs with {num_val_batches}-batch validation each {val_interval} iterations")
         
         # set model to training mode
@@ -424,12 +434,12 @@ class ReconstructionEngine(ABC):
                 outputs, metrics = self.forward(train=False)
                 # Add the local result to the final result
                 if self.step == 0:
-                    #indices = eval_data['indices']
+                    indices = eval_data['indices']
                     targets = self.target
                     eval_outputs = outputs
                     eval_metrics = metrics
                 else:
-                    #indices = torch.cat((indices, eval_data['indices']))
+                    indices = torch.cat((indices, eval_data['indices']))
                     targets = torch.cat((targets, self.target))
                     
                     for k in eval_outputs.keys():
