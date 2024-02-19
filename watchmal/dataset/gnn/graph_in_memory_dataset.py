@@ -58,7 +58,13 @@ class GraphInMemoryDataset(RootDataset, InMemoryDataset):
     
         # General variables
         self.config    = config
-        self.beta_mode = config["beta_mode"]
+
+        if "nb_beta_mode_datapoints" in self.config:
+            self.beta_mode = True
+            self.nb_beta_mode_datapoints = self.config['nb_beta_mode_datapoints']
+        else :
+            self.beta_mode = False
+
         self.verbose   = 2 if self.beta_mode else config["verbose"] 
 
         # Variable to create the graphs
@@ -145,8 +151,9 @@ class GraphInMemoryDataset(RootDataset, InMemoryDataset):
                     print(f"\nÉvènement numéro {i}")
                     print(graph)
 
-            if self.beta_mode and ( i == 100 ):
-                break
+            if self.beta_mode:
+                if self.nb_beta_mode_datapoints % i == 0 :
+                    break
 
         if self.pre_transform is not None:
             data_list = [self.pre_transform(data) for data in data_list]

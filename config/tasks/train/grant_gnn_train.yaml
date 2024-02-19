@@ -1,7 +1,7 @@
-epochs: 50
+epochs: 100
 
 val_interval: 20
-num_val_batches: 5
+num_val_batches: 128
 
 checkpointing: False
 
@@ -12,7 +12,7 @@ data_loaders:
   train:
     split_key: train_idxs 
     batch_size: 64
-    num_workers: 4
+    num_workers: 2
 
     is_graph: True
     drop_last: True 
@@ -22,7 +22,7 @@ data_loaders:
   validation:
     split_key: val_idxs
     batch_size: 64
-    num_workers: 4
+    num_workers: 0
     
     is_graph: True
     drop_last: True

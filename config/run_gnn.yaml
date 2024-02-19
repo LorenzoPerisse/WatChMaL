@@ -1,5 +1,5 @@
-#gpu_list: [0, 1] 
-gpu_list: []
+gpu_list: [0, 1, 2] 
+#gpu_list: []
 seed: null
 dump_path: ./outputs/
 
@@ -7,7 +7,7 @@ defaults:
     - data/dataset: HK_gnn # data/dataset for previous config
     - data/transforms: grant_transforms
 
-    - model: gcn
+    - model: grant_gnn
     - engine: classifier
 
     - tasks/train: grant_gnn_train

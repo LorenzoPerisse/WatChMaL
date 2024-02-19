@@ -1,4 +1,4 @@
-split_path: /sps/t2k/eleblevec/updated_watchmal/4k_index_list.npz
+split_path: /sps/t2k/eleblevec/updated_watchmal/index_lists/4k_index_list.npz
 
 parameters:
   _target_: watchmal.dataset.gnn.graph_in_memory_dataset.GraphInMemoryDataset
@@ -17,7 +17,7 @@ parameters:
 
     to_torch_tensor: True
 
-    beta_mode: False
+    nb_beta_mode_datapoints: 50
     verbose: 0
 
 

@@ -78,7 +78,8 @@ class ResGateConv_v2(torch.nn.Module):
 
         # Global pooling 
         # À faire : Maximum et moyen ? - Erwan 18/01/2024
-        xs_gap = global_add_pool(x, batch)
+        # Terminologie : gap, très moyen vu que global_add_pool existe aussi..
+        xs_gap = global_mean_pool(x, batch)
         xs_gsp = global_max_pool(x, batch)
 
         out = torch.cat((xs_gap, xs_gsp), dim=1) # out.shape = (batch_size, 2 * conv_in_channels[-1])
@@ -88,7 +89,7 @@ class ResGateConv_v2(torch.nn.Module):
             out = hidden_layer(out)
             
             if i < len(self.hidden_layers) - 1: # The last block won't have an activation and a norm layer
-                out = self.activation_hl(out)
+                out = self.activation_hl(out)   # Best thing would probably to add the last layer apart in __init__
                 out = norm_layer(out)
 
         if self.output is not None:
