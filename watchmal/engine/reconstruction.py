@@ -255,10 +255,7 @@ class ReconstructionEngine(ABC):
             Number of epochs between each state save, by default don't save
         """
 
-        if self.rank == 0:
-            data_point = self.data_loaders['train'].dataset[0]['data']
-            log.info(f"\n\nModel sumary : \n {summary(self.model, data_point)}\n\n")
-            log.info(f"Training {epochs} epochs with {num_val_batches}-batch validation each {val_interval} iterations")
+        log.info(f"Training {epochs} epochs with {num_val_batches}-batch validation each {val_interval} iterations\n\n")
         
         # set model to training mode
         self.model.train()

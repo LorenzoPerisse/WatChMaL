@@ -16,10 +16,13 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 import torch.multiprocessing as mp
 
+# pyg imports
+from torch_geometric.nn import summary
 
 # generic imports
 import logging
 import os
+import copy
 
 # Watchmal import
 from watchmal.utils.logging_utils import get_git_version
@@ -124,9 +127,9 @@ def main_worker_function(rank, ngpus_per_node, is_distributed, config, hydra_con
     engine.configure_dataset(config.data)
 
 
+    # keys to update in each dataloaders confic dictionnary
     update_keys = ['seed', 'is_distributed']
-    update_values = [config.seed, is_distributed]
-               
+    update_values = [config.seed, is_distributed]               
     for task, task_config in config.tasks.items():
         with open_dict(task_config):
                 

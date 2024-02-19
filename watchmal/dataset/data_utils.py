@@ -46,9 +46,8 @@ def get_dataset(dataset_config, transforms_config=None):
     
     transform_compose = T.Compose(transform_list)
 
-
     dataset = instantiate(dataset_config, pre_transform=pre_transform_compose, transform=transform_compose)
-    print(f"\n lend dataset : {len(dataset)}\n")
+
     return dataset
 
     # Combine transforms specified in data loader with transforms specified in dataset
