@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 
-
+import omegaconf
 from omegaconf import OmegaConf
 
 import torch_geometric
@@ -53,11 +53,12 @@ class Normalize(torch.nn.Module):
         self.label_norm = label_norm
         self.eps        = eps
         self.inplace    = inplace
-
-        # For hydra compatibility 
-        self.feat_norm = OmegaConf.to_container(self.feat_norm)
-        if self.label_norm is not None:
-            self.label_norm = OmegaConf.to_container(self.label_norm)
+        
+        # For hydra compatibility
+        if isinstance(self.feat_norm, omegaconf.listconfig.ListConfig):
+            self.feat_norm = OmegaConf.to_container(self.feat_norm)
+            if self.label_norm is not None:
+                self.label_norm = OmegaConf.to_container(self.label_norm)
 
         # Need to convert list to torch tensor to perform addition & subtraction
         self.feat_norm = torch.tensor(self.feat_norm)
@@ -112,7 +113,7 @@ class DataToWatchmalDict(torch.nn.Module):
         watchmal_dict = {
             'data': data,
             'target': data.y.to(self.target_to_type).item(),
-            #'idx': idx
+            'indices': data.idx # wtf le s n'a pas de sens ptn; à modifier dans engine.evaluate()
         }
 
         return watchmal_dict 
