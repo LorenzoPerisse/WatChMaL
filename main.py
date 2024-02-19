@@ -4,10 +4,11 @@ Main file used for running the code
 
 # hydra imports
 import hydra
-from omegaconf import OmegaConf, open_dict
 from hydra.utils import instantiate, to_absolute_path
 from hydra.core.hydra_config import HydraConfig
 from hydra.core.utils import configure_log
+
+from omegaconf import OmegaConf, open_dict
 
 # torch imports
 import torch
@@ -15,10 +16,12 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 import torch.multiprocessing as mp
 
+
 # generic imports
 import logging
 import os
 
+# Watchmal import
 from watchmal.utils.logging_utils import get_git_version
 
 log = logging.getLogger(__name__)
@@ -41,14 +44,6 @@ def main(config):
     # initialize seed
     if config.seed is None:
         config.seed = torch.seed()
-
-    # Add dynamicaly created informations in the data_loaders configuration dictionnaries
-    update_keys = ['seed', 'is_distributed']
-    update_values = [config.seed, is_distributed]
-    for key, value in zip(update_keys, update_values):
-        OmegaConf.update(config.tasks.train.data_loaders.train, key, value, force_add=True)
-        OmegaConf.update(config.tasks.train.data_loaders.validation, key, value, force_add=True)
-        OmegaConf.update(config.tasks.evaluate.data_loaders.test, key, value, force_add=True)
 
     # Initialize process group env variables
     if is_distributed:
@@ -121,20 +116,28 @@ def main_worker_function(rank, ngpus_per_node, is_distributed, config, hydra_con
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
         model = DDP(model, device_ids=[device])
 
-    print(f"\nModel : {model}")
-    print(f"Number of trainable parameters : {sum(p.numel() for p in model.parameters() if p.requires_grad)}\n")
+    
     # Instantiate the engine
     engine = instantiate(config.engine, model=model, rank=rank, gpu=device, dump_path=config.dump_path)
     
-    # Create the dataset
+    # Create dataset
     engine.configure_dataset(config.data)
 
 
+    update_keys = ['seed', 'is_distributed']
+    update_values = [config.seed, is_distributed]
+               
     for task, task_config in config.tasks.items():
         with open_dict(task_config):
                 
             # Configure data loaders
             if 'data_loaders' in task_config:
+
+                # Add the "update_keys" to each data_loader dicts with the values in "updates_values"
+                for _, task_params in task_config.data_loaders.items():
+                    for key, value in zip(update_keys, update_values):
+                        OmegaConf.update(task_params, key, value)
+
                 #engine.configure_data_loaders(config.data, task_config.pop("data_loaders"), is_distributed, config.seed)
                 engine.configure_data_loaders_v2(task_config.pop("data_loaders"))
 
