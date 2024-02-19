@@ -27,10 +27,6 @@ def get_dataset(dataset_config, transforms_config=None):
     Instantiate a GraphCompose class with all the transformations passed in transforms_config
     Then instantiate a torch_geometric Dataset
     """
-    print(f"\nTransform config : {transforms_config}\n")
-    print(f"\nDataset config : {dataset_config}\n")
-
-    print(f"\nPre Transforms_config: {transforms_config['pre_transforms']}\n")
     pre_transform_list = []
     for _, pre_trf_config in transforms_config['pre_transforms'].items():
         pre_transform = instantiate(pre_trf_config)
@@ -38,7 +34,7 @@ def get_dataset(dataset_config, transforms_config=None):
 
     pre_transform_compose = T.Compose(pre_transform_list)
 
-    print(f"\nTransforms_config: {transforms_config['transforms']}\n")
+
     transform_list = []
     for _, trf_config in transforms_config['transforms'].items():
         transform = instantiate(trf_config)
@@ -48,6 +44,14 @@ def get_dataset(dataset_config, transforms_config=None):
 
     dataset = instantiate(dataset_config, pre_transform=pre_transform_compose, transform=transform_compose)
 
+
+    
+    # print(f"\nTransform config : {transforms_config}\n")
+    # print(f"\nDataset config : {dataset_config}\n")
+
+    # print(f"\nPre Transforms_config: {transforms_config['pre_transforms']}\n")
+    # print(f"\nTransforms_config: {transforms_config['transforms']}\n")
+    
     return dataset
 
     # Combine transforms specified in data loader with transforms specified in dataset

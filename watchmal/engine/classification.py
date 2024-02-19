@@ -64,21 +64,22 @@ class ClassifierEngine(ReconstructionEngine):
         """
         with torch.set_grad_enabled(train):
             # Move the data and the labels to the GPU (if using CPU this has no effect)
-            model_out = self.model(self.data)
             
+            model_out = self.model(self.data)
+            self.loss = self.criterion(model_out, self.target)
+                        
             softmax = self.softmax(model_out)
-
             predicted_labels = torch.argmax(model_out, dim=-1)
+
+            accuracy = (predicted_labels == self.target).sum() / float(predicted_labels.nelement())
+            outputs = {'softmax': softmax}
+            metrics = {'loss': self.loss, 'accuracy': accuracy}
+
 
             # if not train:
             #     print(f"\nTarget : {self.target}\n")
             #     print(f"Model out : {model_out}\n")
             #     print(f"\n Labels prédits : {predicted_labels}\n")
 
-            self.loss = self.criterion(model_out, self.target)
-            
-            accuracy = (predicted_labels == self.target).sum().to(torch.float16) / float(predicted_labels.nelement())
-            outputs = {'softmax': softmax}
-            metrics = {'loss': self.loss, 'accuracy': accuracy}
 
         return outputs, metrics

@@ -127,9 +127,9 @@ class ReconstructionEngine(ABC):
             Random seed to use to initialize dataloaders.
         """
         #print(loaders_config)
-        print("\n")
         for name, loader_config in loaders_config.items():
-            print(f" Name : {name}, Config : {loader_config}")
+            # if self.rank == 0 :
+            #     print(f" Name : {name}, Config : {loader_config}")
 
             #loader_config = {'is_distributed': is_distributed, 'seed': seed} | loader_config
             #print(f" Name : {name}, Config : {loader_config}")
@@ -139,8 +139,7 @@ class ReconstructionEngine(ABC):
                 dataset=self.dataset,
                 **loader_config
             )
-       
-        print("\n")
+    
         # Instead, note the self.datatets
         # for name, loader_config in loaders_config.items():
         #    self.data_loaders[name] = get_data_loader(self.datasets, **loader_config, is_distributed=is_distributed, seed=seed)
@@ -255,7 +254,8 @@ class ReconstructionEngine(ABC):
             Number of epochs between each state save, by default don't save
         """
 
-        log.info(f"Training {epochs} epochs with {num_val_batches}-batch validation each {val_interval} iterations\n\n")
+        if self.rank == 0:
+            log.info(f"Training {epochs} epochs with {num_val_batches}-batch validation each {val_interval} iterations\n\n")
         
         # set model to training mode
         self.model.train()

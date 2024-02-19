@@ -19,10 +19,11 @@ import torch.multiprocessing as mp
 # pyg imports
 from torch_geometric.nn import summary
 
+
 # generic imports
 import logging
 import os
-import copy
+
 
 # Watchmal import
 from watchmal.utils.logging_utils import get_git_version
