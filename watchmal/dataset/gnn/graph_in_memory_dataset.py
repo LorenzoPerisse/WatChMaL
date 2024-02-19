@@ -165,7 +165,7 @@ class GraphInMemoryDataset(RootDataset, InMemoryDataset):
         # Caution : If transform functions are given in __init__(), this data object will NOT
         # have already be transformed. See the torch_geometric.Data.Dataset.__get_item__ 
         data = super().get(idx)
-        data.indices = idx
+        data.idx = idx
 
         return data
 
