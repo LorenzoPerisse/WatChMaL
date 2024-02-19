@@ -10,7 +10,7 @@ from torch import from_numpy
 import numpy as np
 
 # WatChMaL imports
-from watchmal.dataset.h5_dataset import H5Dataset
+from watchmal.dataset.common_classes.h5_dataset import H5Dataset
 import watchmal.dataset.data_utils as du
 
 
@@ -48,22 +48,25 @@ class CNNDataset(H5Dataset):
         """
         super().__init__(h5file)
         
-        self.pmt_positions = np.load(pmt_positions_file)['pmt_image_positions']
         self.use_times = use_times
         self.use_charges = use_charges
+        self.transforms = transforms #du.get_transformations(transformations, transforms)
+        self.one_indexed = one_indexed
+       
+        self.pmt_positions = np.load(pmt_positions_file)['pmt_image_positions']
+
+       
         self.data_size = np.max(self.pmt_positions, axis=0) + 1
         self.barrel_rows = [row for row in range(self.data_size[0]) if
                             np.count_nonzero(self.pmt_positions[:, 0] == row) == self.data_size[1]]
-        self.transforms = None #du.get_transformations(transformations, transforms)
-        self.one_indexed = one_indexed
-
+       
         n_channels = 0
         if use_times:
             n_channels += 1
         if use_charges:
             n_channels += 1
         if n_channels == 0:
-            raise Exception("Please set 'use_times' and/or 'use_charges' to 'True' in your data config.")
+            raise Exception("Please set 'use_times' and/or 'use_charges' to 'True' in your data config.") # wtf
        
         self.data_size = np.insert(self.data_size, 0, n_channels)
 
@@ -107,7 +110,12 @@ class CNNDataset(H5Dataset):
 
         data_dict = super().__getitem__(item)
 
-        processed_data = from_numpy(self.process_data(self.event_hit_pmts, self.event_hit_times, self.event_hit_charges))
+        processed_data = self.process_data(
+            self.event_hit_pmts,
+            self.event_hit_times,
+            self.event_hit_charges
+        )
+        processed_data = from_numpy(processed_data)
         processed_data = du.apply_random_transformations(self.transforms, processed_data)
 
         data_dict["data"] = processed_data
