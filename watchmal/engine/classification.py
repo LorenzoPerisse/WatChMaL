@@ -5,7 +5,7 @@ from watchmal.engine.reconstruction import ReconstructionEngine
 
 class ClassifierEngine(ReconstructionEngine):
     """Engine for performing training or evaluation for a classification network."""
-    def __init__(self, truth_key, model, rank, gpu, dump_path, label_set=None):
+    def __init__(self, truth_key, model, rank, gpu, dump_path, flatten_model_output=False, prediction_threshold=None,label_set=None):
         """
         Parameters
         ==========
@@ -25,8 +25,13 @@ class ClassifierEngine(ReconstructionEngine):
         """
         # create the directory for saving the log and dump files
         super().__init__(truth_key, model, rank, gpu, dump_path)
-        self.softmax = torch.nn.Softmax(dim=1)
+        
+        self.flatten_model_output=flatten_model_output
+        self.prediction_threshold = prediction_threshold
         self.label_set = label_set
+
+        self.softmax = torch.nn.Softmax(dim=1)
+        self.sigmoid = torch.nn.Sigmoid()
 
     def configure_data_loaders(self, data_config, loaders_config, is_distributed, seed):
         """
@@ -66,20 +71,29 @@ class ClassifierEngine(ReconstructionEngine):
             # Move the data and the labels to the GPU (if using CPU this has no effect)
             
             model_out = self.model(self.data)
+            if self.flatten_model_output:
+                model_out = torch.flatten(model_out)
+        
             self.loss = self.criterion(model_out, self.target)
-                        
-            softmax = self.softmax(model_out)
-            predicted_labels = torch.argmax(model_out, dim=-1)
+
+
+            if not self.flatten_model_output:
+                softmax = self.softmax(model_out)
+                predicted_labels = torch.argmax(model_out, dim=-1)
+            else :
+                softmax = self.sigmoid(model_out)
+                predicted_labels = softmax >= self.prediction_threshold
+
 
             accuracy = (predicted_labels == self.target).sum() / float(predicted_labels.nelement())
             outputs = {'softmax': softmax}
             metrics = {'loss': self.loss, 'accuracy': accuracy}
 
-
             # if not train:
-            #     print(f"\nTarget : {self.target}\n")
-            #     print(f"Model out : {model_out}\n")
-            #     print(f"\n Labels prédits : {predicted_labels}\n")
+                # print(f"\nModel out : {model_out.shape}, {model_out}\n")
+                # print(f"\nTarget out : {self.target.shape}, {self.target}\n")
+                # print(f"\n Softmax : {softmax}\n")
+                # print(f"\nPredicted_labels : {predicted_labels}\n")
 
 
         return outputs, metrics
