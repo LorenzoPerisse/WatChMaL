@@ -99,6 +99,8 @@ class DataToWatchmalDict(torch.nn.Module):
                 to_type = torch.int16
             case 'int32':
                 to_type = torch.int32
+            case 'float16':
+                to_type = torch.float16
             case 'float32':
                 to_type = torch.float32
             case _:

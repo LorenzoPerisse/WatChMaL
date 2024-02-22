@@ -151,8 +151,8 @@ class GraphInMemoryDataset(RootDataset, InMemoryDataset):
                     print(f"\nÉvènement numéro {i}")
                     print(graph)
 
-            if self.beta_mode:
-                if self.nb_beta_mode_datapoints % i == 0 :
+            if self.beta_mode and i > 0:
+                if i % self.nb_beta_mode_datapoints  == 0 :
                     break
 
         if self.pre_transform is not None:
