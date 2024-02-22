@@ -1,23 +1,23 @@
-# Python at least 3.10 is required
 
-# To update your python version is a virtual env :
-conda activate "env_name"
+## Avec cuda 12.1
+conda config --add channels conda-forge
 conda install python=3.10
 
-# Add the conda-froge channel
-conda config --add channels conda-forge # Set conda-forge channel to the higher priority
+#### Cuda 12.1 et dernier torch
+conda install pytorch pytorch-cuda=12.1 -c pytorch -c nvidia
 
-# Download torch for cuda 11.8 (the cuda version on the CC Lyon)
-conda install pytorch pytorch-cuda=11.8 -c pytorch -c nvidia
-
-# Dowload pyg
+#### Pyg channel
 conda install pyg -c pyg
-conda install pytorch-cluster -c pyg # for clustering, like knn_graph
-conda install tabulate # for torch_geometric.nn.summary
+conda install pytorch-cluster -c pyg 
 
-# Dowload uproot
+
+#### Pip
 pip install uproot
 
+####  Affichage, infos..
+conda install tabulate
+conda install seaborn
 
-# Additional librairies
-conda install seaborn -c conda-forge
+
+### Pour watchmal : 
+conda install hydra-core omegaconf h5py

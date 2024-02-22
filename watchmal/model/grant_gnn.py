@@ -10,7 +10,7 @@ from torch_geometric.nn.norm import BatchNorm
 from torch.nn import Dropout, Linear, Sigmoid, LogSoftmax, ReLU
 
 
-# The v_1 would be the "BaseResGatesConv" only using Linear at the end (not batchnorm and dropout)
+# The v_1 would be the "BaseResGateConv" only using Linear at the end (not batchnorm and dropout)
 # nor global max et global add pooling
 class ResGateConv_v2(torch.nn.Module):
     r""""

@@ -19,7 +19,6 @@ from watchmal.dataset.samplers import DistributedSamplerWrapper
 # pyg imports
 import torch_geometric.transforms as T
 from torch_geometric.loader import DataLoader as PyGDataLoader
-from torch_geometric.transforms import KNNGraph
 
 
 def get_dataset(dataset_config, transforms_config=None):
@@ -51,7 +50,7 @@ def get_dataset(dataset_config, transforms_config=None):
 
     # print(f"\nPre Transforms_config: {transforms_config['pre_transforms']}\n")
     # print(f"\nTransforms_config: {transforms_config['transforms']}\n")
-    
+    print(f"\nLength of the dataset : {len(dataset)}\n")
     return dataset
 
     # Combine transforms specified in data loader with transforms specified in dataset
