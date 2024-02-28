@@ -68,7 +68,6 @@ class ClassifierEngine(ReconstructionEngine):
             Dictionary containing loss, predicted labels, softmax, accuracy, and raw model outputs
         """
         with torch.set_grad_enabled(train):
-            # Move the data and the labels to the GPU (if using CPU this has no effect)
             
             model_out = self.model(self.data)
             if self.flatten_model_output:
