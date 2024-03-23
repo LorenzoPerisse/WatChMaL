@@ -64,17 +64,20 @@ def main(config):
     
     log.info(f"Output directory: {config.dump_path}")
 
-    
+
     if is_distributed:
-        log.info("Using multiprocessing...")
         devids = [f"cuda:{x}" for x in config.gpu_list]
+        log.info(devids)
+        log.info("Using multiprocessing...")
         log.info(f"Using DistributedDataParallel on these devices: {devids}")
         mp.spawn(main_worker_function, nprocs=ngpus, args=(ngpus, is_distributed, config, HydraConfig.get()))
+    
     elif ngpus == 1:
         log.info("Only one gpu found, not using multiprocessing...")
         main_worker_function(0, ngpus, is_distributed, config)
+    
     else : 
-        log.info("No gpu provided, running on cpu...")
+        log.info("gpu_list empty, running on cpu...")
         main_worker_function(0, ngpus, is_distributed, config)
 
 
