@@ -88,7 +88,7 @@ class ResGateConv_v2(torch.nn.Module):
         out = torch.cat((xs_gap, xs_gsp), dim=1) # out.shape = (batch_size, 2 * conv_in_channels[-1])
         
         # Apply hidden layers
-        for i, (hidden_layer, norm_layer) in enumerate(zip(self.hidden_layers, self.hl_norms)):
+        for _, (hidden_layer, norm_layer) in enumerate(zip(self.hidden_layers, self.hl_norms)):
             out = hidden_layer(out)
             out = self.activation_hl(out)   # Best thing would probably to add the last layer apart in __init__
             out = norm_layer(out)
