@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 
 
 class ReconstructionEngine(ABC):
-    def __init__(self, truth_key, model, rank, gpu, dump_path):
+    def __init__(self, truth_key, model, rank, device, dump_path):
         """
         Parameters
         ==========
@@ -47,7 +47,7 @@ class ReconstructionEngine(ABC):
 
         self.rank = rank
         self.model = model
-        self.device = torch.device(gpu)
+        self.device = torch.device(device) 
         self.truth_key = truth_key
 
         # variables to monitor training pipelines
@@ -117,14 +117,8 @@ class ReconstructionEngine(ABC):
 
         Parameters
         ==========
-        data_config
-            Hydra config specifying dataset.
         loaders_config
-            Hydra config specifying a list of dataloaders.
-        is_distributed : bool
-            Whether running in multiprocessing mode.
-        seed : int
-            Random seed to use to initialize dataloaders.
+            Dictionnary specifying a list of dataloader configurations.
         """
         #print(loaders_config)
         for name, loader_config in loaders_config.items():
@@ -135,8 +129,10 @@ class ReconstructionEngine(ABC):
             #print(f" Name : {name}, Config : {loader_config}")
            
             self.data_loaders[name] = get_data_loader_v2(
-                split_path=self.split_path,
                 dataset=self.dataset,
+                split_path=self.split_path,
+                device=self.device,
+                is_distributed=self.is_distributed,
                 **loader_config
             )
     
@@ -146,7 +142,7 @@ class ReconstructionEngine(ABC):
 
 
 
-    def configure_data_loaders(self, data_config, loaders_config, is_distributed, seed):
+    def configure_data_loaders(self, data_config, loaders_config):
         """
         Set up data loaders from loaders hydra configs for the data config, and a list of data loader configs.
 
@@ -163,12 +159,12 @@ class ReconstructionEngine(ABC):
         """
 
         for name, loader_config in loaders_config.items():
-            self.data_loaders[name] = get_data_loader(**data_config, **loader_config, is_distributed=is_distributed, seed=seed)
-
-        # Instead, note the self.datatets
-        # for name, loader_config in loaders_config.items():
-        #    self.data_loaders[name] = get_data_loader(self.datasets, **loader_config, is_distributed=is_distributed, seed=seed)
-
+            self.data_loaders[name] = get_data_loader(
+                **data_config.h5_dataset, 
+                **loader_config, 
+                is_distributed=self.is_distributed, 
+                device=self.device
+            )
 
     def get_synchronized_outputs(self, output_dict):
         """
@@ -281,7 +277,7 @@ class ReconstructionEngine(ABC):
                 if self.epoch > 0:
                     log.info(f"Epoch {self.epoch} completed in {datetime.now() - epoch_start_time}")
                     epoch_start_time = datetime.now()
-                log.info(f"Epoch {self.epoch+1} starting at {datetime.now()}")
+                print(f"\n\nEpoch {self.epoch+1} starting at {datetime.now()}")
 
             train_loader = self.data_loaders["train"]
             self.step = 0
@@ -301,8 +297,11 @@ class ReconstructionEngine(ABC):
                 
                 # Call forward: make a prediction & measure the average error using data = self.data
                 outputs, metrics = self.forward(True)
+
+                log.info(f" Iteration {self.iteration}, train loss : {metrics['loss']:.5f}")
+                #log.info(f"  Batch index : {train_data['indices']}")
                 metrics = {k: v.item() for k, v in metrics.items()}
-                
+
                 # Call backward: back-propagate error and update weights using loss = self.loss
                 self.backward()
                 
@@ -328,7 +327,7 @@ class ReconstructionEngine(ABC):
                         step_time = datetime.now()
                         average_step_time = (step_time - previous_step_time)/val_interval
                         
-                        print(f"Iteration {self.iteration}, Epoch {self.epoch+1}/{epochs}, Step {self.step}/{steps_per_epoch}"
+                        print(f"\nIteration {self.iteration}, Epoch {self.epoch+1}/{epochs}, Step {self.step}/{steps_per_epoch}"
                               f" Step time {average_step_time},"
                               f" Epoch time {step_time-epoch_start_time}"
                               f" Total time {step_time-start_time}")
@@ -394,9 +393,9 @@ class ReconstructionEngine(ABC):
         if self.rank == 0:
             log_entries = {"iteration": self.iteration, "epoch": self.epoch, **val_metrics, "saved_best": False}
             # Save if this is the best model so far
-            print(f"  Validation {', '.join(f'{k}: {v:.5g}' for k, v in val_metrics.items())}", end="")
+            print(f"  Validation {', '.join(f'{k}: {v:.5g}' for k, v in val_metrics.items())}", end="\n")
             if val_metrics["loss"] < self.best_validation_loss:
-                print(" ... Best validation loss so far!")
+                print(" ... Best validation loss so far!\n")
                 self.best_validation_loss = val_metrics["loss"]
                 self.save_state(suffix="_BEST")
                 log_entries["saved_best"] = True
@@ -412,11 +411,15 @@ class ReconstructionEngine(ABC):
 
     def evaluate(self, report_interval=20):
         """Evaluate the performance of the trained model on the test set."""
-        log.info(f"Evaluating, output to directory: {self.dump_path}")
+        
+        log.info(f"\n\nCurrently evaluating. \nOutput directory: {self.dump_path}")
+        
         # Iterate over the validation set to calculate val_loss and val_acc
         with torch.no_grad():
+            
             # Set the model to evaluation mode
             self.model.eval()
+            
             # evaluation loop
             start_time = datetime.now()
             step_time = start_time
@@ -441,6 +444,7 @@ class ReconstructionEngine(ABC):
                     
                     for k in eval_outputs.keys():
                         eval_outputs[k] = torch.cat((eval_outputs[k], outputs[k]))
+
                     for k in eval_metrics.keys():
                         eval_metrics[k] += metrics[k]
                
@@ -462,7 +466,6 @@ class ReconstructionEngine(ABC):
         # else :
         #     indices = self.data_loaders['test'].sampler.indices 
 
-        indices = torch.tensor(indices)
         eval_outputs["indices"] = indices.to(self.device)
         eval_outputs[self.truth_key] = targets
        
@@ -477,7 +480,7 @@ class ReconstructionEngine(ABC):
                 np.save(self.dump_path + k + ".npy", v)
             # Compute overall evaluation metrics
             for k, v in eval_metrics.items():
-                log.info(f"Average evaluation {k}: {v}")
+                log.info(f"Average evaluation {k}: {v:.4f}")
 
     def save_state(self, suffix="", name=None):
         """
@@ -521,7 +524,7 @@ class ReconstructionEngine(ABC):
         """Restore model and training state from a given filename."""
         # Open a file in read-binary mode
         with open(weight_file, 'rb') as f:
-            log.info(f"Restoring state from {weight_file}")
+            log.info(f"Restoring state from {weight_file}\n")
             # prevent loading while DDP operations are happening
             if self.is_distributed:
                 torch.distributed.barrier()

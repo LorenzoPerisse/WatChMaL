@@ -1,0 +1,13 @@
+_target_: watchmal.engine.classification.ClassifierEngine
+
+truth_key: 'labels'
+
+flatten_model_output: False
+prediction_threshold: 0.5 # Only used when flatten_model_ouput=True
+
+
+# label_set: # ONLY FOR THE CLASSIFICATION ENGINE
+# IF THE DATA IS USING PID, CONVERT IT TO "CLASSES"
+# because classification in torc expects 0, 1... n ONLY
+#   - 13  # Would be class 0
+#   - 11  # Would be class 1

@@ -1,0 +1,12 @@
+report_interval: 5
+
+data_loaders:
+  test:
+    split_key: test_idxs
+    is_graph: True
+    drop_last: True 
+
+    pin_memory: True
+    seed: null
+    num_workers: 2
+    batch_size: 512

@@ -14,11 +14,11 @@ from typing import Optional
 from typing import Iterator, Optional, Sized, Sequence
 
 
-def SubsetSequentialSampler(indices):
-    return indices
+# def SubsetSequentialSampler(indices):
+#     return indices
 
 
-class SubsetSequentialSampler_v2(Sampler[int]):
+class SubsetSequentialSampler(Sampler[int]):
     r"""Samples elements sequentially, always in the same order.
 
     Args:
@@ -37,25 +37,27 @@ class SubsetSequentialSampler_v2(Sampler[int]):
 
 class SubsetRandomSampler(Sampler[int]):
     r"""Samples elements randomly from a given list of indices, without replacement.
-
+        Updated class of torch to handle 'device=cuda:x' (throw error with torch.randomper otherwise)
     Args:
         indices (sequence): a sequence of indices
         generator (Generator): Generator used in sampling.
+        device (string) : device to perform the sampling 
     """
 
     indices: Sequence[int]
 
-    def __init__(self, indices: Sequence[int], generator=None) -> None:
+    def __init__(self, indices: Sequence[int], generator=None, device=None) -> None:
         self.indices = indices
         self.generator = generator
+        self.device = device # Add, to indicate the device to torch.randperm
 
     def __iter__(self) -> Iterator[int]:
-        for i in torch.randperm(len(self.indices), generator=self.generator):
+        for i in torch.randperm(len(self.indices), generator=self.generator, device=self.device):
             yield self.indices[i]
 
     def __len__(self) -> int:
         return len(self.indices)
-    
+
 
 class DistributedSamplerWrapper(DistributedSampler):
     """
@@ -75,6 +77,7 @@ class DistributedSamplerWrapper(DistributedSampler):
         num_replicas: Optional[int] = None,
         rank: Optional[int] = None,
         shuffle: bool = False,
+        **kwargs
     ):
         """
         Initialises a sampler that wraps some other sampler for use with DistributedDataParallel
@@ -95,16 +98,23 @@ class DistributedSamplerWrapper(DistributedSampler):
             num_replicas=num_replicas,
             rank=rank,
             shuffle=shuffle,
-            seed=seed
+            seed=seed, 
+            **kwargs,
         )
         self.sampler = sampler
 
     def __iter__(self):
+
         # fetch DistributedSampler indices
         indexes_of_indexes = super().__iter__()
+        
         # fetch subsampler indices with synchronized seeding
         subsampler_indices = list(self.sampler)
+        
         # get subsampler_indexes[indexes_of_indexes]
         distributed_subsampler_indices = itemgetter(*indexes_of_indexes)(subsampler_indices)
 
+        if not isinstance(distributed_subsampler_indices, tuple): 
+            distributed_subsampler_indices = distributed_subsampler_indices,  # otherwise problem when testing with batch_size of 1 on each gpu
+    
         return iter(distributed_subsampler_indices)

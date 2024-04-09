@@ -59,13 +59,17 @@ class GraphInMemoryDataset(RootDataset, InMemoryDataset):
         # General variables
         self.config    = config
 
-        if "nb_beta_mode_datapoints" in self.config:
-            self.beta_mode = True
-            self.nb_beta_mode_datapoints = self.config['nb_beta_mode_datapoints']
-        else :
-            self.beta_mode = False
+        # if "nb_beta_mode_datapoints" in self.config:
+        #     self.beta_mode = True
+        #     self.nb_beta_mode_datapoints = self.config['nb_beta_mode_datapoints']
+        # else :
+        #     self.beta_mode = False
 
-        self.verbose   = 2 if self.beta_mode else config["verbose"] 
+        try : 
+            self.nb_datapoints = self.config['nb_datapoints']
+        except :
+            self.nb_datapoints = 1_000_000 # Number of event never reached    
+        self.verbose = config["verbose"] 
 
         # Variable to create the graphs
         self.graph_init = False
@@ -75,7 +79,7 @@ class GraphInMemoryDataset(RootDataset, InMemoryDataset):
 
 
         ### --- Not a clean way to call the __init__ of parents classes, but 
-        ### --- still it seems most the comprehensible way for everyone to me
+        ### --- still it seems the most comprehensible way for everyone to me
 
         # Instantiate the RootDataset class (to read the .root file)
         RootDataset.__init__(
@@ -150,10 +154,9 @@ class GraphInMemoryDataset(RootDataset, InMemoryDataset):
                 if i % (int((num_entries / 2)) - 1) == 0 :
                     print(f"\nÉvènement numéro {i}")
                     print(graph)
-
-            if self.beta_mode and i > 0:
-                if i % self.nb_beta_mode_datapoints  == 0 :
-                    break
+    
+            if ( i % self.nb_datapoints  == 0 ) and (i >= 1):
+                break
 
         if self.pre_transform is not None:
             data_list = [self.pre_transform(data) for data in data_list]

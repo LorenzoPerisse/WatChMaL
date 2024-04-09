@@ -5,7 +5,7 @@ from watchmal.engine.reconstruction import ReconstructionEngine
 
 class ClassifierEngine(ReconstructionEngine):
     """Engine for performing training or evaluation for a classification network."""
-    def __init__(self, truth_key, model, rank, gpu, dump_path, flatten_model_output=False, prediction_threshold=None,label_set=None):
+    def __init__(self, truth_key, model, rank, device, dump_path, flatten_model_output=False, prediction_threshold=None,label_set=None):
         """
         Parameters
         ==========
@@ -24,16 +24,16 @@ class ClassifierEngine(ReconstructionEngine):
             0 to N).
         """
         # create the directory for saving the log and dump files
-        super().__init__(truth_key, model, rank, gpu, dump_path)
+        super().__init__(truth_key, model, rank, device, dump_path)
         
-        self.flatten_model_output=flatten_model_output
+        self.flatten_model_output = flatten_model_output
         self.prediction_threshold = prediction_threshold
         self.label_set = label_set
 
         self.softmax = torch.nn.Softmax(dim=1)
         self.sigmoid = torch.nn.Sigmoid()
 
-    def configure_data_loaders(self, data_config, loaders_config, is_distributed, seed):
+    def configure_data_loaders(self, data_config, loaders_config):
         """
         Set up data loaders from loaders hydra configs for the data config, and a list of data loader configs.
 
@@ -48,7 +48,8 @@ class ClassifierEngine(ReconstructionEngine):
         seed : int
             Random seed to use to initialize dataloaders.
         """
-        super().configure_data_loaders(data_config, loaders_config, is_distributed, seed)
+        super().configure_data_loaders(data_config, loaders_config)
+
         if self.label_set is not None:
             for name in loaders_config.keys():
                 self.data_loaders[name].dataset.map_labels(self.label_set)

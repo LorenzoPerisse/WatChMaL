@@ -14,7 +14,7 @@ import numpy as np
 import random
 
 # WatChMaL imports
-from watchmal.dataset.samplers import DistributedSamplerWrapper
+from watchmal.dataset.samplers.samplers import DistributedSamplerWrapper
 
 # pyg imports
 import torch_geometric.transforms as T
@@ -47,16 +47,16 @@ def get_dataset(dataset_config, transforms_config=None):
 
     dataset = instantiate(dataset_config, pre_transform=pre_transform_compose, transform=transform_compose)
     
+
+    return dataset
+
+    # Combine transforms specified in data loader with transforms specified in dataset
     # print(f"\nTransform config : {transforms_config}\n")
     # print(f"\nDataset config : {dataset_config}\n")
 
     # print(f"\nPre Transforms_config: {transforms_config['pre_transforms']}\n")
     # print(f"\nTransforms_config: {transforms_config['transforms']}\n")
-    print(f"\nLength of the dataset : {len(dataset)}\n")
-    return dataset
 
-    # Combine transforms specified in data loader with transforms specified in dataset
-    
     #transforms = dataset["transforms"] if (("transforms" in dataset) and (dataset["transforms"] is not None)) else []
     #transforms = (pre_transforms or []) + transforms + (post_transforms or [])
     #dataset = instantiate(dataset, transforms=(transforms or None))
@@ -64,10 +64,11 @@ def get_dataset(dataset_config, transforms_config=None):
 
 def get_data_loader_v2(
         dataset,
-        split_path=None,  
-        split_key=None,
+        device,
+        split_path,  
+        split_key,
         sampler_config=None,
-        seed=0., 
+        seed=None, 
         is_distributed=False,
         batch_size=2,
         is_graph=False, 
@@ -76,24 +77,25 @@ def get_data_loader_v2(
 ):    
     
     # Define the sampler according to sampler_config
-    if split_path is not None:
-
-        if split_key is None:
-            print(f"NameError: You defined a split_path argument but there are no split_key given in the configuration of the dataloader")
-            raise NameError
-        
+    if not seed: 
         split_indices = np.load(split_path, allow_pickle=True)[split_key]
-        sampler = instantiate(sampler_config, split_indices)
-    else:
-        sampler = instantiate(sampler_config)
+        sampler=instantiate(sampler_config, indices=split_indices)
+
+    else : # We are in train or validation mode. There is randomness 
+        
+        generator = torch.Generator(device=device)
+        generator.manual_seed(seed)
+
+        split_indices = np.load(split_path, allow_pickle=True)[split_key]
+        sampler = instantiate(sampler_config, indices=split_indices, generator=generator, device=device)
     
     # Handle distributed training in case of multi_processing
+    # ngpus est déjà connu mais recalculé ici..
     if is_distributed:
         ngpus = torch.distributed.get_world_size()
-
-        batch_size = int(batch_size / ngpus)
-        
+        batch_size = max(int(batch_size / ngpus), 1)
         sampler = DistributedSamplerWrapper(sampler=sampler, seed=seed)
+
 
     persistent_workers = num_workers > 0    # Better way to do this ? 
     if is_graph: 
@@ -114,7 +116,15 @@ def get_data_loader_v2(
             **kwargs
             )
 
-def get_data_loader(dataset, batch_size, sampler, num_workers, is_distributed, seed, is_graph=False,
+def get_data_loader(dataset, 
+                    batch_size, 
+                    sampler_config, 
+                    seed,
+                    num_workers, 
+                    device, 
+                    is_distributed,  
+                    is_graph=False,
+                    pin_memory=False,
                     split_path=None, split_key=None, pre_transforms=None, post_transforms=None, drop_last=False):
     """
     Creates a dataloader given the dataset and sampler configs. The dataset and sampler are instantiated using their
@@ -135,7 +145,7 @@ def get_data_loader(dataset, batch_size, sampler, num_workers, is_distributed, s
     is_distributed : bool
         Whether running in multiprocessing mode (i.e. DistributedDataParallel)
     seed : int
-        Random seed used to coordinate samplers in distributed mode.
+        Random number used to coordinate samplers in distributed mode.
     is_graph : bool
         A boolean indicating whether the dataset is graph or not, to use PyTorch Geometric data loader if it is graph. False by default.
     split_path
@@ -163,25 +173,64 @@ def get_data_loader(dataset, batch_size, sampler, num_workers, is_distributed, s
     dataset = instantiate(dataset, transforms=(transforms or None))
     
     
-    if split_path is not None and split_key is not None:
-        split_indices = np.load(split_path, allow_pickle=True)[split_key]
-        sampler = instantiate(sampler, split_indices)
-    else:
-        sampler = instantiate(sampler)
+    # Old code. Not understanding tjhe if statement on split_path which is always mandatroy for all task
+    # if split_path is not None and split_key is not None:
+    #     # The sampler needs the split_indices for the dataset and a generator for the randomness
+
+    #     split_indices = np.load(split_path, allow_pickle=True)[split_key]
+       
+    #     generator= instantiate(sampler.generator, device=device)
+    #     generator.manual_seed(seed) # gen for val_loader and gen for train_loader will have the same seed, is it a problem ?
+
+    #     sampler = instantiate(sampler_config, indices=split_indices, device=device)
+
+    # else:
+    #     print('No splith path or split key')
+    #     sampler = instantiate(sampler)
     
+    # if is_distributed:
+    #     ngpus = torch.distributed.get_world_size()
+
+    #     batch_size = max(int(batch_size / ngpus), 1)
+        
+    #     sampler = DistributedSamplerWrapper(sampler=sampler, seed=seed, drop_last=drop_last)
+
+    # Define the sampler according to sampler_config
+    if not seed: 
+        split_indices = np.load(split_path, allow_pickle=True)[split_key]
+        sampler=instantiate(sampler_config, indices=split_indices)
+
+        print('Sequential mode')
+    else : # We are in train or validation mode. There is randomness 
+        
+        generator = torch.Generator(device=device)
+        generator.manual_seed(seed)
+
+        split_indices = np.load(split_path, allow_pickle=True)[split_key]
+        sampler = instantiate(sampler_config, indices=split_indices, generator=generator, device=device)
+        print('Random mode')
+    
+    # Handle distributed training in case of multi_processing
+    # ngpus est déjà connu mais recalculé ici..
     if is_distributed:
         ngpus = torch.distributed.get_world_size()
-
-        batch_size = int(batch_size/ngpus)
-        
+        batch_size = max(int(batch_size / ngpus), 1)
         sampler = DistributedSamplerWrapper(sampler=sampler, seed=seed)
 
     # Erwan 25/01 : Add drop_last parameters
+    persistent_workers = num_workers > 0
     if is_graph: 
-        return PyGDataLoader(dataset, sampler=sampler, batch_size=batch_size, num_workers=num_workers, drop_last=drop_last)
+        return PyGDataLoader(
+            dataset, 
+            sampler=sampler, 
+            batch_size=batch_size, 
+            num_workers=num_workers, drop_last=drop_last)
     else:
-        return DataLoader(dataset, sampler=sampler, batch_size=batch_size, num_workers=num_workers, drop_last=drop_last,
-                          persistent_workers=(num_workers > 0), pin_memory=True)
+        return DataLoader(
+            dataset, 
+            sampler=sampler, 
+            batch_size=batch_size, 
+            num_workers=num_workers, persistent_workers=persistent_workers, pin_memory=pin_memory, drop_last=drop_last)
 
 
 def get_transformations(transformations, transform_names):

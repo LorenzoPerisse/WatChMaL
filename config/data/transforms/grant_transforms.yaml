@@ -1,7 +1,7 @@
 pre_transforms:
   kNN:
     _target_: torch_geometric.transforms.KNNGraph
-    k: 10
+    k: 5
 
 transforms:
 
@@ -9,8 +9,8 @@ transforms:
     _target_: watchmal.dataset.gnn.transformations.Normalize
         
     feat_norm: 
-      - [3240., 3240., 3287.55, 2000.]
-      - [-3240., -3240.,  -3287.55, 0.]
+      - [3255., 3255., 3300., 2000.]
+      - [-3255., -3255.,  -3300., 550.]
 
   DataToWatchmalDict:
     _target_: watchmal.dataset.gnn.transformations.DataToWatchmalDict

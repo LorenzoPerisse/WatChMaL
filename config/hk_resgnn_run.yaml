@@ -1,0 +1,24 @@
+gpu_list: [] 
+seed: null
+
+dump_path: ./outputs/
+kind: gnn
+
+defaults:
+    - data/dataset: hk_gnn
+    - data/transforms: grant_transforms # data/transforms is available for graphs only
+
+    - tasks/train: gpu_graph_train_val
+    #- tasks/evaluate: graph_test
+    - tasks/restore_best_state: restore_best_state
+
+    - sampler@tasks.train.data_loaders.train.sampler_config: subset_random
+    - sampler@tasks.train.data_loaders.validation.sampler_config: subset_random    
+    #- sampler@tasks.evaluate.data_loaders.test.sampler_config: subset_sequential
+
+    - model: small_resgnn
+    - engine: gnn_classifier
+    - optimizers@tasks.train.optimizers: adam
+    - loss@tasks.train.loss: cross_entropy
+    
+    - _self_

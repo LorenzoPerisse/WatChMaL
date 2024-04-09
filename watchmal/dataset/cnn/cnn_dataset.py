@@ -56,7 +56,7 @@ class CNNDataset(H5Dataset):
         self.pmt_positions = np.load(pmt_positions_file)['pmt_image_positions']
 
        
-        self.data_size = np.max(self.pmt_positions, axis=0) + 1
+        self.data_size = (np.max(self.pmt_positions, axis=0) + 1).astype(np.int16)        
         self.barrel_rows = [row for row in range(self.data_size[0]) if
                             np.count_nonzero(self.pmt_positions[:, 0] == row) == self.data_size[1]]
        
@@ -91,8 +91,8 @@ class CNNDataset(H5Dataset):
         if self.one_indexed:
             hit_pmts = hit_pmts-1  # SK cable numbers start at 1
 
-        hit_rows = self.pmt_positions[hit_pmts, 0]
-        hit_cols = self.pmt_positions[hit_pmts, 1]
+        hit_rows = self.pmt_positions[hit_pmts, 0].astype(np.int16)
+        hit_cols = self.pmt_positions[hit_pmts, 1].astype(np.int16)
 
         data = np.zeros(self.data_size, dtype=np.float32)
 

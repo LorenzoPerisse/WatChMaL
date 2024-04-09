@@ -15,7 +15,7 @@ from torch.nn import Dropout, Linear, Sigmoid, LogSoftmax, ReLU
 class ResGateConv_v2(torch.nn.Module):
     r""""
     Args :
-        in_features : Number of features per node in the graph
+        in_channels : Number of features per node in the graph
         conv_kernels : The number of filters for each layer starting from the 2nd. The len defines 
             the number of layers.
         linear_out_features : The number of neurones at the end of each Linear layer. 
