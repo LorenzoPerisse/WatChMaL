@@ -114,7 +114,8 @@ class DistributedSamplerWrapper(DistributedSampler):
         # get subsampler_indexes[indexes_of_indexes]
         distributed_subsampler_indices = itemgetter(*indexes_of_indexes)(subsampler_indices)
 
+        # Erwan : added it otherwise problem when testing with batch_size of 1 on each gpu
         if not isinstance(distributed_subsampler_indices, tuple): 
-            distributed_subsampler_indices = distributed_subsampler_indices,  # otherwise problem when testing with batch_size of 1 on each gpu
+            distributed_subsampler_indices = distributed_subsampler_indices,
     
         return iter(distributed_subsampler_indices)

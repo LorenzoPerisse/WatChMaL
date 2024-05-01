@@ -5,7 +5,18 @@ from watchmal.engine.reconstruction import ReconstructionEngine
 
 class ClassifierEngine(ReconstructionEngine):
     """Engine for performing training or evaluation for a classification network."""
-    def __init__(self, truth_key, model, rank, device, dump_path, flatten_model_output=False, prediction_threshold=None,label_set=None):
+    def __init__(
+            self, 
+            truth_key, 
+            model, 
+            rank, 
+            device, 
+            dump_path, 
+            dataset=None,
+            flatten_model_output=False, 
+            prediction_threshold=None,
+            label_set=None
+        ):
         """
         Parameters
         ==========
@@ -24,7 +35,14 @@ class ClassifierEngine(ReconstructionEngine):
             0 to N).
         """
         # create the directory for saving the log and dump files
-        super().__init__(truth_key, model, rank, device, dump_path)
+        super().__init__(
+            truth_key, 
+            model, 
+            rank, 
+            device, 
+            dump_path,
+            dataset=dataset
+        )
         
         self.flatten_model_output = flatten_model_output
         self.prediction_threshold = prediction_threshold
@@ -54,46 +72,61 @@ class ClassifierEngine(ReconstructionEngine):
             for name in loaders_config.keys():
                 self.data_loaders[name].dataset.map_labels(self.label_set)
 
-    def forward(self, train=True):
+    def forward(self, forward_type='train'):
         """
         Compute predictions and metrics for a batch of data.
 
         Parameters
         ==========
-        train : bool
+        forward_type : (str) either 'train', 'val' or 'test'
             Whether in training mode, requiring computing gradients for backpropagation
-
+            For 'test' also returns the softmax value in outputs
         Returns
         =======
         dict
             Dictionary containing loss, predicted labels, softmax, accuracy, and raw model outputs
         """
-        with torch.set_grad_enabled(train):
-            
-            model_out = self.model(self.data)
+        outputs = {}
+        grad_enabled = True if forward_type == 'train' else False
+
+        with torch.set_grad_enabled(grad_enabled):
+    
+            model_out = self.model(self.data) # even in ddp, the forward is done with self.model and not self.module
+
+            # Compute the loss
             if self.flatten_model_output:
                 model_out = torch.flatten(model_out)
-        
-            self.loss = self.criterion(model_out, self.target)
 
+            loss = self.criterion(model_out, self.target)
 
-            if not self.flatten_model_output:
-                softmax = self.softmax(model_out)
-                predicted_labels = torch.argmax(model_out, dim=-1)
-            else :
+            # Apply softmax to model_out
+            if self.flatten_model_output:
                 softmax = self.sigmoid(model_out)
-                predicted_labels = softmax >= self.prediction_threshold
+            else: 
+                softmax = self.softmax(model_out)
+
+            # Compute accuracy based on the softmax values
+            if self.flatten_model_output:
+                preds = ( softmax >= self.prediction_threshold )
+            else :
+                preds = torch.argmax(model_out, dim=-1)
+            
+            accuracy = (preds == self.target).sum() / len(self.target)
+
+            # Add the metrics to the output dictionnary
+            outputs['loss'] = loss
+            outputs['accuracy'] = accuracy
+            if forward_type == 'test': # In testing mode we also save the softmax values
+                outputs['softmax'] = softmax
+
+        # outputs contains tensors linked to the gradient graph (and on gpu is any) 
+        return outputs
 
 
-            accuracy = (predicted_labels == self.target).sum() / float(predicted_labels.nelement())
-            outputs = {'softmax': softmax}
-            metrics = {'loss': self.loss, 'accuracy': accuracy}
-
-            # if not train:
-                # print(f"\nModel out : {model_out.shape}, {model_out}\n")
-                # print(f"\nTarget out : {self.target.shape}, {self.target}\n")
-                # print(f"\n Softmax : {softmax}\n")
-                # print(f"\nPredicted_labels : {predicted_labels}\n")
-
-
-        return outputs, metrics
+        # if not train:
+            # print(f"\nModel out : {model_out.shape}, {model_out}\n")
+            # print(f"\nTarget out : {self.target.shape}, {self.target}\n")
+            # print(f"\n Softmax : {softmax}\n")
+            # print(f"\nPredicted_labels : {predicted_labels}\n")
+        
+        # if needed one day : predicted_labels.nelement() see https://pytorch.org/docs/stable/generated/torch.numel.html#torch.numel (nelement is an alias for .numel())

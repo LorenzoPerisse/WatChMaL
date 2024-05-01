@@ -1,3 +1,7 @@
 _target_: torch.optim.Adam
+<<<<<<< Updated upstream
 lr: 0.00001
+=======
+lr: 0.0005
+>>>>>>> Stashed changes
 weight_decay: 0

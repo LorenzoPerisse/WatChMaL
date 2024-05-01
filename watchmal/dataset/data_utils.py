@@ -89,8 +89,7 @@ def get_data_loader_v2(
         split_indices = np.load(split_path, allow_pickle=True)[split_key]
         sampler = instantiate(sampler_config, indices=split_indices, generator=generator, device=device)
     
-    # Handle distributed training in case of multi_processing
-    # ngpus est déjà connu mais recalculé ici..
+    # Wrappe the sampler is case of distributed training
     if is_distributed:
         ngpus = torch.distributed.get_world_size()
         batch_size = max(int(batch_size / ngpus), 1)
@@ -173,7 +172,7 @@ def get_data_loader(dataset,
     dataset = instantiate(dataset, transforms=(transforms or None))
     
     
-    # Old code. Not understanding tjhe if statement on split_path which is always mandatroy for all task
+    # Old code. Not understanding the if statement on split_path which is always mandatroy for all task
     # if split_path is not None and split_key is not None:
     #     # The sampler needs the split_indices for the dataset and a generator for the randomness
 

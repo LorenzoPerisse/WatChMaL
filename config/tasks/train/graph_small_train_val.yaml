@@ -1,6 +1,12 @@
+<<<<<<< Updated upstream
 epochs: 3
 
 val_interval: 1 # display information every val_interval step (= batch)
+=======
+epochs: 10
+
+val_interval: 2
+>>>>>>> Stashed changes
 num_val_batches: 1
 
 checkpointing: False
@@ -22,6 +28,10 @@ data_loaders: # This yaml is just for testing the pipeline, no pin_memory even i
     drop_last: True
 
     pin_memory: False
+<<<<<<< Updated upstream
     #seed: 1           # Attention : if using subset_sequential seed must be None
+=======
+    seed: 1
+>>>>>>> Stashed changes
     num_workers: 0
     batch_size: 2

@@ -1,7 +1,11 @@
-epochs: 100
+epochs: 500
 
 val_interval: 10 # (Validation every batch_size * val_interval events)
+<<<<<<< Updated upstream:config/tasks/train/graph_gpu_train_val.yaml
 num_val_batches: 5
+=======
+num_val_batches: 40
+>>>>>>> Stashed changes:config/tasks/train/graph_gpu_train_val.yaml
 
 checkpointing: False
 
@@ -16,7 +20,11 @@ data_loaders:
     pin_memory: True
     seed: 5
     num_workers: 2     
+<<<<<<< Updated upstream:config/tasks/train/graph_gpu_train_val.yaml
     batch_size: 1024
+=======
+    batch_size: 512
+>>>>>>> Stashed changes:config/tasks/train/graph_gpu_train_val.yaml
     
   validation:
     split_key: val_idxs
@@ -26,4 +34,8 @@ data_loaders:
     pin_memory: True
     seed: 5
     num_workers: 2     
+<<<<<<< Updated upstream:config/tasks/train/graph_gpu_train_val.yaml
     batch_size: 1024
+=======
+    batch_size: 512
+>>>>>>> Stashed changes:config/tasks/train/graph_gpu_train_val.yaml

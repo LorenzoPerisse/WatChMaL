@@ -80,7 +80,6 @@ class ResGateConv_v2(torch.nn.Module):
             x = self.drop(x)
 
         # Global pooling 
-        # À faire : Maximum et moyen ? - Erwan 18/01/2024
         # Terminologie : gap, très moyen vu que global_add_pool existe aussi..
         xs_gap = global_mean_pool(x, batch)
         xs_gsp = global_max_pool(x, batch)
