@@ -5,7 +5,17 @@ from watchmal.engine.reconstruction import ReconstructionEngine
 
 class RegressionEngine(ReconstructionEngine):
     """Engine for performing training or evaluation for a regression network."""
-    def __init__(self, truth_key, model, rank, device, dump_path, output_center=0, output_scale=1):
+    def __init__(self, 
+        truth_key, 
+        model, 
+        rank, 
+        device, 
+        dump_path, 
+        wandb_run=None,
+        dataset=None,
+        output_center=0, 
+        output_scale=1
+        ):
         """
         Parameters
         ==========
@@ -25,7 +35,16 @@ class RegressionEngine(ReconstructionEngine):
             Value to divide target values by
         """
         # create the directory for saving the log and dump files
-        super().__init__(truth_key, model, rank, device, dump_path)
+        super().__init__(
+            truth_key, 
+            model, 
+            rank, 
+            device, 
+            dump_path, 
+            wandb_run=wandb_run,
+            dataset=dataset
+        )
+        
         self.output_center = output_center
         self.output_scale = output_scale
 

@@ -5,7 +5,19 @@ from watchmal.engine.reconstruction import ReconstructionEngine
 
 class ClassifierEngine(ReconstructionEngine):
     """Engine for performing training or evaluation for a classification network."""
-    def __init__(self, truth_key, model, rank, device, dump_path, flatten_model_output=False, prediction_threshold=None,label_set=None):
+    def __init__(
+            self, 
+            truth_key, 
+            model, 
+            rank, 
+            device, 
+            dump_path, 
+            wandb_run=None,
+            dataset=None,
+            flatten_model_output=False, 
+            prediction_threshold=None,
+            label_set=None
+        ):
         """
         Parameters
         ==========
@@ -24,7 +36,15 @@ class ClassifierEngine(ReconstructionEngine):
             0 to N).
         """
         # create the directory for saving the log and dump files
-        super().__init__(truth_key, model, rank, device, dump_path)
+        super().__init__(
+            truth_key, 
+            model, 
+            rank, 
+            device, 
+            dump_path,
+            wandb_run,
+            dataset=dataset
+        )
         
         self.flatten_model_output = flatten_model_output
         self.prediction_threshold = prediction_threshold
@@ -86,8 +106,8 @@ class ClassifierEngine(ReconstructionEngine):
 
 
             accuracy = (predicted_labels == self.target).sum() / float(predicted_labels.nelement())
-            outputs = {'softmax': softmax}
             metrics = {'loss': self.loss, 'accuracy': accuracy}
+            outputs = {'softmax': softmax}
 
             # if not train:
                 # print(f"\nModel out : {model_out.shape}, {model_out}\n")
@@ -96,4 +116,4 @@ class ClassifierEngine(ReconstructionEngine):
                 # print(f"\nPredicted_labels : {predicted_labels}\n")
 
 
-        return outputs, metrics
+        return outputs, metrics # outputs and metrics are needed to be tensor when using DDP (for reducing)

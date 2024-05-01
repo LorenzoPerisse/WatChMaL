@@ -1,0 +1,24 @@
+program: run_watchmal.sh
+
+method: grid
+
+#name: distributed_computing_test
+
+metric:
+  name: val_loss
+  goal: minimize
+
+parameters:
+
+  lr:
+    value: !!float 1e-5
+  
+  batch_size:
+    values: [16, 32, 64]
+
+  dropout:
+    values: [0.1, 0.2, 0.5]
+
+command:
+ - /usr/bin/bash
+ - ${program}

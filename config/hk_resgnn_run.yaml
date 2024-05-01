@@ -6,9 +6,9 @@ kind: gnn
 
 defaults:
     - data/dataset: hk_gnn
-    - data/transforms: grant_transforms # data/transforms is available for graphs only
+    - data/transforms: emu_class_charge_time_norm_transforms # data/transforms is available for graphs only
 
-    - tasks/train: gpu_graph_train_val
+    - tasks/train: graph_gpu_train_val
     #- tasks/evaluate: graph_test
     - tasks/restore_best_state: restore_best_state
 

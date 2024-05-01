@@ -59,6 +59,7 @@ class GraphInMemoryDataset(RootDataset, InMemoryDataset):
         # General variables
         self.config    = config
 
+        self.split_path = config['split_path']
         # if "nb_beta_mode_datapoints" in self.config:
         #     self.beta_mode = True
         #     self.nb_beta_mode_datapoints = self.config['nb_beta_mode_datapoints']
@@ -128,7 +129,9 @@ class GraphInMemoryDataset(RootDataset, InMemoryDataset):
 
     def process(self):
         # If process() is called it means that path_to_gnn_dataset is empty
-
+        print(f"No graphs found in the path : {self.config['graph_dataset_path']}.")
+        print(f"Creating a dataset from the .root file : {self.config['root_file_path']}")
+        
         if not self.graph_init:
             self.graph_initialize(self.config)
     
@@ -151,11 +154,11 @@ class GraphInMemoryDataset(RootDataset, InMemoryDataset):
 
 
             if self.verbose >= 1:
-                if i % (int((num_entries / 2)) - 1) == 0 :
+                if i % ( int((num_entries / 2)) - 1) == 0 :
                     print(f"\nÉvènement numéro {i}")
                     print(graph)
     
-            if ( i % self.nb_datapoints  == 0 ) and (i >= 1):
+            if (i + 1) % self.nb_datapoints  == 0 :
                 break
 
         if self.pre_transform is not None:

@@ -114,3 +114,7 @@ kernprof.py
 .idea/
 __MACOSX/
 /outputs/
+
+# Erwan
+logs/
+lauch/wandb/

@@ -27,7 +27,16 @@ log = logging.getLogger(__name__)
 
 
 class ReconstructionEngine(ABC):
-    def __init__(self, truth_key, model, rank, device, dump_path):
+    def __init__(
+            self, 
+            truth_key, 
+            model, 
+            rank, 
+            device, 
+            dump_path,
+            wandb_run=None,
+            dataset=None
+        ):
         """
         Parameters
         ==========
@@ -44,17 +53,26 @@ class ReconstructionEngine(ABC):
         """
         # create the directory for saving the log and dump files
         self.dump_path = dump_path
+        self.wandb_run= wandb_run
 
+        # variables for the model
         self.rank = rank
-        self.model = model
         self.device = torch.device(device) 
-        self.truth_key = truth_key
+        self.model = model
 
         # variables to monitor training pipelines
         self.epoch = 0
         self.step = 0
         self.iteration = 0
         self.best_validation_loss = 1.0e10
+
+        # variables for the dataset
+        self.dataset      = None if dataset is None else dataset
+        self.split_path   = ""
+        self.truth_key = truth_key
+
+        # Variables for the dataloaders
+        self.data_loaders = {}
 
 
         # Set up the parameters to save given the model type
@@ -66,10 +84,6 @@ class ReconstructionEngine(ABC):
         else:
             self.is_distributed = False
             self.module = self.model
-
-        self.dataset      = None
-        self.split_path   = ""
-        self.data_loaders = {}
 
         # define the placeholder attributes
         self.data   = None
@@ -100,7 +114,6 @@ class ReconstructionEngine(ABC):
         self.scheduler = instantiate(scheduler_config, optimizer=self.optimizer)
 
 
-
     def configure_dataset(self, data_config):
         """
         Set up the dataset according to the data_config and the transform_config
@@ -111,6 +124,16 @@ class ReconstructionEngine(ABC):
         self.split_path = data_config.dataset.split_path # Initialized for data_loaders
         self.dataset = get_dataset(data_config.dataset.parameters, data_config.transforms)
     
+    def set_dataset(self, dataset):
+        
+        if self.dataset is not None:
+            print(f'Error : Dataset is already set in the engine of the process : {self.rank}')
+            raise ValueError
+
+        self.dataset = dataset
+        self.split_path = dataset.split_path
+        print(f"Split path : {self.split_path}\n\n")
+
     def configure_data_loaders_v2(self, loaders_config):
         """
         Set up data loaders from loaders hydra configs for the data config, and a list of data loader configs.
@@ -122,11 +145,6 @@ class ReconstructionEngine(ABC):
         """
         #print(loaders_config)
         for name, loader_config in loaders_config.items():
-            # if self.rank == 0 :
-            #     print(f" Name : {name}, Config : {loader_config}")
-
-            #loader_config = {'is_distributed': is_distributed, 'seed': seed} | loader_config
-            #print(f" Name : {name}, Config : {loader_config}")
            
             self.data_loaders[name] = get_data_loader_v2(
                 dataset=self.dataset,
@@ -135,11 +153,6 @@ class ReconstructionEngine(ABC):
                 is_distributed=self.is_distributed,
                 **loader_config
             )
-    
-        # Instead, note the self.datatets
-        # for name, loader_config in loaders_config.items():
-        #    self.data_loaders[name] = get_data_loader(self.datasets, **loader_config, is_distributed=is_distributed, seed=seed)
-
 
 
     def configure_data_loaders(self, data_config, loaders_config):
@@ -195,7 +208,9 @@ class ReconstructionEngine(ABC):
 
     def get_synchronized_metrics(self, metric_dict):
         """
-        Gathers metrics from multiple processes using pytorch distributed operations for DistributedDataParallel
+        Gathers metrics from multiple processes using pytorch 
+        distributed operations for DistributedDataParallel
+        All tensors are 
 
         Parameters
         ==========
@@ -208,29 +223,30 @@ class ReconstructionEngine(ABC):
             Dictionary containing mean of tensor values gathered from all processes
         """
         global_metric_dict = {}
-        for name, tensor in zip(metric_dict.keys(), metric_dict.values()):
+        
+        for name, tensor in zip(metric_dict.keys(), metric_dict.values()): # .items() ?
+            
             if self.is_distributed:
                 torch.distributed.reduce(tensor, 0)
                 if self.rank == 0:
-                    global_metric_dict[name] = tensor.item()/self.n_gpus
+                    global_metric_dict[name] = tensor.item() / self.n_gpus
             else:
                 global_metric_dict[name] = tensor.item()
+        
         return global_metric_dict
-
 
 
     @abstractmethod
     def forward(self, train=True):
         # best way would be t
-        pass
-
-        
+        pass 
 
     def backward(self):
         """Backward pass using the loss computed for a mini-batch"""
         self.optimizer.zero_grad()  # reset gradients from last step
         self.loss.backward()        # compute the new gradients for this iteration
         self.optimizer.step()       # perform gradient descent on all the parameters of the model
+
 
     def train(self, epochs=0, val_interval=20, num_val_batches=4, checkpointing=False, save_interval=None):
         """
@@ -273,10 +289,12 @@ class ReconstructionEngine(ABC):
 
         # global training loop for multiple epochs
         for self.epoch in range(epochs):
+            
             if self.rank == 0:
                 if self.epoch > 0:
                     log.info(f"Epoch {self.epoch} completed in {datetime.now() - epoch_start_time}")
                     epoch_start_time = datetime.now()
+
                 print(f"\n\nEpoch {self.epoch+1} starting at {datetime.now()}")
 
             train_loader = self.data_loaders["train"]
@@ -293,18 +311,14 @@ class ReconstructionEngine(ABC):
                 # Train on batch
                 self.data = train_data['data'].to(self.device)
                 self.target = train_data[self.truth_key].to(self.device)
-                # print(f" Train data : {train_data}\n")
                 
                 # Call forward: make a prediction & measure the average error using data = self.data
-                outputs, metrics = self.forward(True)
-
-                log.info(f" Iteration {self.iteration}, train loss : {metrics['loss']:.5f}")
-                #log.info(f"  Batch index : {train_data['indices']}")
-                metrics = {k: v.item() for k, v in metrics.items()}
+                _, metrics = self.forward(True)
 
                 # Call backward: back-propagate error and update weights using loss = self.loss
                 self.backward()
-                
+
+
                 # run scheduler
                 if self.scheduler is not None:
                     self.scheduler.step()
@@ -312,14 +326,25 @@ class ReconstructionEngine(ABC):
                 # update the epoch and iteration
                 self.step += 1
                 self.iteration += 1
+
+                # --- Data to monitor the training ---
+
+                # Convert the tensors to python float
+                metrics = {name: value.item() for name, value in metrics.items()}
+
+                if self.wandb_run is not None:
+                    self.wandb_run.log(metrics)
+            
+                log.info(f" Iteration {self.iteration}, train loss : {metrics['loss']:.5f}")
+                log.info(f" Batch index : {train_data['indices']}")
+
+                print(f" Iteration {self.iteration}, train loss : {metrics['loss']:.5f}")
+                print(f" Batch index : {train_data['indices']}")
                 
-                # get relevant attributes of result for logging
-                log_entries = {"iteration": self.iteration, "epoch": self.epoch, **metrics}
-                
-                # record the metrics for the mini-batch in the log
+                log_entries = {"iteration": self.iteration, "epoch": self.epoch, **metrics}                
                 self.train_log.log(log_entries)
                
-                # run validation on given intervals
+                # ---- Run validation ----
                 if self.iteration % val_interval == 0:
                     
                     if self.rank == 0:
@@ -340,6 +365,7 @@ class ReconstructionEngine(ABC):
                 self.save_state(suffix=f'_epoch_{self.epoch+1}')
         
         self.train_log.close()
+        
         if self.rank == 0:
             log.info(f"Epoch {self.epoch} completed in {datetime.now() - epoch_start_time}")
             log.info(f"Training {epochs} epochs completed in {datetime.now()-start_time}")
@@ -361,13 +387,16 @@ class ReconstructionEngine(ABC):
         # set model to eval mode
         self.model.eval()
         val_metrics = None
+
         for val_batch in range(num_val_batches): # num_val_batches is defined in grant_gnn_train et pas basé sur le val_dataset ??
+            
             # get validation data mini-batch
             try:
                 val_data = next(val_iter)
             
             except StopIteration:
                 del val_iter
+                
                 if self.is_distributed:
                     self.data_loaders["validation"].sampler.set_epoch(self.data_loaders["validation"].sampler.epoch+1)
                 
@@ -379,7 +408,11 @@ class ReconstructionEngine(ABC):
             self.target = val_data[self.truth_key].to(self.device)
             
             # evaluate the network
-            outputs, metrics = self.forward(False)
+            _, metrics = self.forward(False)
+            
+            if self.wandb_run is not None:
+                self.wandb_run.log({'val_loss': metrics['loss']})
+
             if val_metrics is None:
                 val_metrics = metrics
             else:
@@ -390,10 +423,15 @@ class ReconstructionEngine(ABC):
         val_metrics = {k: v/num_val_batches for k, v in val_metrics.items()}
         val_metrics = self.get_synchronized_metrics(val_metrics)
 
+        print(f"Validation batch loss : {val_metrics['loss']}")
+        print(val_metrics)
+
         if self.rank == 0:
             log_entries = {"iteration": self.iteration, "epoch": self.epoch, **val_metrics, "saved_best": False}
+            
             # Save if this is the best model so far
             print(f"  Validation {', '.join(f'{k}: {v:.5g}' for k, v in val_metrics.items())}", end="\n")
+            
             if val_metrics["loss"] < self.best_validation_loss:
                 print(" ... Best validation loss so far!\n")
                 self.best_validation_loss = val_metrics["loss"]
@@ -401,9 +439,11 @@ class ReconstructionEngine(ABC):
                 log_entries["saved_best"] = True
             else:
                 print("")
+           
             # Save the latest model if checkpointing
             if checkpointing:
                 self.save_state()
+            
             self.val_log.log(log_entries)
         
         # return model to training mode - why is it needed here ?
@@ -482,6 +522,7 @@ class ReconstructionEngine(ABC):
             for k, v in eval_metrics.items():
                 log.info(f"Average evaluation {k}: {v:.4f}")
 
+
     def save_state(self, suffix="", name=None):
         """
         Save model weights and other training state information to a file.
@@ -514,14 +555,10 @@ class ReconstructionEngine(ABC):
         log.info(f"Saved state as: {filename}")
         return filename
 
-    def restore_best_state(self, name=None):
-        """Restore model using best model found in current directory."""
-        if name is None:
-            name = f"{self.__class__.__name__}_{self.module.__class__.__name__}"
-        self.restore_state(f"{self.dump_path}{name}_BEST.pth")
 
     def restore_state(self, weight_file):
         """Restore model and training state from a given filename."""
+        
         # Open a file in read-binary mode
         with open(weight_file, 'rb') as f:
             log.info(f"Restoring state from {weight_file}\n")
@@ -537,3 +574,10 @@ class ReconstructionEngine(ABC):
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
             # load iteration count
             self.iteration = checkpoint['global_step']
+
+    def restore_best_state(self, name=None):
+        """Restore model using best model found in current directory."""
+        if name is None:
+            name = f"{self.__class__.__name__}_{self.module.__class__.__name__}"
+        self.restore_state(f"{self.dump_path}{name}_BEST.pth")
+

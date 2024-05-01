@@ -1,4 +1,4 @@
-epochs: 10
+epochs: 3
 
 val_interval: 2
 num_val_batches: 1
