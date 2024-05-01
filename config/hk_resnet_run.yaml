@@ -8,7 +8,7 @@ kind: cnn
 defaults:
     - data/h5_dataset: hk_cnn_no_mPMTs # hk for cnn
 
-    - tasks/train: gpu_cnn_train_val
+    - tasks/train: cnn_gpu_train_val
 #    - tasks/evaluate: cnn_test
 
     - sampler@tasks.train.data_loaders.train.sampler: subset_random

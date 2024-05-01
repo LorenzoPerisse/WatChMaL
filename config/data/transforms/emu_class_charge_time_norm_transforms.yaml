@@ -1,0 +1,18 @@
+pre_transforms:
+  kNN:
+    _target_: torch_geometric.transforms.KNNGraph
+    k: 8
+
+transforms:
+
+  Normalize:
+    _target_: watchmal.dataset.gnn.transformations.Normalize
+        
+    feat_norm: 
+      - [2000., 1105.] # max time : ? , max_e = 1k MeV + 105 MeV (mu-)
+      - [550., 100.] # min time : ?, min_e = 100 MeV + 500keV (e-)
+
+  DataToWatchmalDict:
+    _target_: watchmal.dataset.gnn.transformations.DataToWatchmalDict
+
+    target_to_type: int16

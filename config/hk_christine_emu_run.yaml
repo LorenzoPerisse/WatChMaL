@@ -1,11 +1,8 @@
 gpu_list: [] 
-seed: null
-
-dump_path: ./outputs/
 kind: gnn
 
 defaults:
-    - data/dataset: hk_gnn
+    - data/dataset: hk_emu_christine
     - data/transforms: emu_class_charge_time_norm_transforms # data/transforms is available for graphs only
 
     - tasks/train: graph_gpu_train_val
@@ -13,10 +10,10 @@ defaults:
     - tasks/restore_best_state: restore_best_state
 
     - sampler@tasks.train.data_loaders.train.sampler_config: subset_random
-    - sampler@tasks.train.data_loaders.validation.sampler_config: subset_sequential 
+    - sampler@tasks.train.data_loaders.validation.sampler_config: subset_random    
     #- sampler@tasks.evaluate.data_loaders.test.sampler_config: subset_sequential
 
-    - model: small_resgnn
+    - model: emu_grant_config
     - engine: gnn_classifier
     - optimizers@tasks.train.optimizers: adam
     - loss@tasks.train.loss: cross_entropy

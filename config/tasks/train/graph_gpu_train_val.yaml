@@ -1,7 +1,7 @@
-epochs: 500
+epochs: 100
 
 val_interval: 10 # (Validation every batch_size * val_interval events)
-num_val_batches: 40
+num_val_batches: 5
 
 checkpointing: False
 
@@ -16,7 +16,7 @@ data_loaders:
     pin_memory: True
     seed: 5
     num_workers: 2     
-    batch_size: 512
+    batch_size: 1024
     
   validation:
     split_key: val_idxs
@@ -26,4 +26,4 @@ data_loaders:
     pin_memory: True
     seed: 5
     num_workers: 2     
-    batch_size: 512
+    batch_size: 1024

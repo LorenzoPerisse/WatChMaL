@@ -9,5 +9,5 @@ data_loaders:
     pin_memory: False
     seed: null
     num_workers: 0
-    batch_size: 1
+    batch_size: 1 # if multi-gpu it will be 1 for each process
     
