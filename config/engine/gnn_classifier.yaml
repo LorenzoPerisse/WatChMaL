@@ -3,7 +3,9 @@ _target_: watchmal.engine.classification.ClassifierEngine
 truth_key: 'target'
 
 flatten_model_output: False
-prediction_threshold: 0.5 # Only used when flatten_model_ouput=True
+# prediction_threshold is only used 
+# when flatten_model_ouput=True
+prediction_threshold: null 
 
 
 # label_set: # ONLY FOR THE CLASSIFICATION ENGINE

@@ -1,12 +1,13 @@
 gpu_list: [] 
 seed: null
 
-dump_path: /sps/t2k/eleblevec/updated_watchmal/outputs/test
+dump_path: ".outputs"
 kind: gnn
+launch_wandb: False
 
 defaults:
     - data/dataset: betamode_hk_gnn
-    - data/transforms: emu_class_hits_time_norm_transforms # data/transforms is available for graphs only
+    - data/transforms: emu_class_charge_time_norm_transforms # data/transforms is available for graphs only
 
     - tasks/train: graph_small_train_val
     - tasks/evaluate: graph_small_test
@@ -16,7 +17,7 @@ defaults:
     - sampler@tasks.train.data_loaders.validation.sampler_config: subset_sequential   
     - sampler@tasks.evaluate.data_loaders.test.sampler_config: subset_sequential
 
-    - model: model_for_testing
+    - model: gnn_for_testing
     - engine: gnn_classifier
     - loss@tasks.train.loss: cross_entropy
     - optimizers@tasks.train.optimizers: adam

@@ -9,7 +9,7 @@ parameters:
     tree_name: 'root_event' # depending on wcsimroot_to_root
     graph_dataset_path: /sps/t2k/eleblevec/datasets/graph_datasets/e_mu_500MeV_10each
       
-    train_keys: ['hitx', 'hity', 'hitz', 'time']
+    train_keys: ['time', 'charge']
     label_keys: ['eventType']
     edge_keys: ['hitx', 'hity', 'hitz']
 
