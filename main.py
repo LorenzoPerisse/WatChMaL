@@ -17,6 +17,7 @@ import torch.multiprocessing as mp
 from torch.distributed import init_process_group, destroy_process_group
 from torch.nn.parallel import DistributedDataParallel as DDP
 
+import wandb
 
 # generic imports
 import logging
@@ -25,12 +26,12 @@ import pprint
 import yaml
 
 # Watchmal import
-from watchmal.utils.logging_utils import get_git_version
+from watchmal.utils.logging_utils import setup_logging
 from watchmal.utils.build_utils import build_dataset, build_model
 
 
-log = logging.getLogger(__name__)
-
+#log = logging.getLogger(__name__)
+log = setup_logging(__name__)
 
 from hydra.utils import get_original_cwd
 
@@ -80,6 +81,8 @@ def main(hydra_config, global_hydra_config):
     # It's only when the dataset has to be processed that 
     # this part needs to be outside the run(..) function.
     # In the end we will need to make .root -> graph.pt outside of watchmal
+    wandb_run = wandb.init() if hydra_config.launch_wandb else None
+
     if hydra_config.kind == 'gnn':
         dataset = build_dataset(hydra_config)        
     else : # When using kind='cnn'
@@ -88,11 +91,11 @@ def main(hydra_config, global_hydra_config):
     # Parse gpu argument to set the type of run (cpu/gpu/gpus)
     if len(gpu_list) == 0:
         log.info("The gpu list is empty. Run will be done on cpu.\n")
-        run(rank=0, gpu_list=gpu_list, dataset=dataset, hydra_config=hydra_config, global_hydra_config=global_hydra_config)
+        run(rank=0, gpu_list=gpu_list, dataset=dataset, wandb_run=wandb_run, hydra_config=hydra_config, global_hydra_config=global_hydra_config)
     
     elif len(gpu_list) == 1:
         log.info("One gpu in the gpu list.\n")
-        run(rank=0, gpu_list=gpu_list, dataset=dataset, hydra_config=hydra_config, global_hydra_config=global_hydra_config)
+        run(rank=0, gpu_list=gpu_list, dataset=dataset, wandb_run=wandb_run, hydra_config=hydra_config, global_hydra_config=global_hydra_config)
 
     else: 
         devids = [f"cuda:{x}" for x in gpu_list]
@@ -103,22 +106,24 @@ def main(hydra_config, global_hydra_config):
         mp.spawn(
             run, 
             nprocs=len(gpu_list), # In our case we always consider n_processes=n_gpus=len(gpu_list)
-            args=(gpu_list, dataset, hydra_config, global_hydra_config)
+            args=(gpu_list, dataset, wandb_run, hydra_config, global_hydra_config)
         )
 
 
-def run(rank, gpu_list, dataset, hydra_config, global_hydra_config):
+def run(rank, gpu_list, dataset, wandb_run, hydra_config, global_hydra_config):
 
     # Initialize the group and configure the log in case of distributed training
     if len(gpu_list) > 1:
         ddp_setup(rank, world_size=len(gpu_list)) # Keep len(gpu_list here). After can call get_world_size()
         configure_log(global_hydra_config.job_logging, global_hydra_config.verbose)
 
-
     device = 'cpu' if len(gpu_list) == 0 else rank    
-    log.info(f"Running worker {rank} on device : {device}")
+    wandb_run = wandb_run if rank == 0 else None
+    log.info(f"Running worker {rank} on device : {device} with wandb_run : {wandb_run}")
     
+
     # Instantiate the model (for each process if many) 
+    torch.manual_seed(0)
     model = build_model(
         model_config=hydra_config.model, 
         device=device, 
@@ -133,10 +138,12 @@ def run(rank, gpu_list, dataset, hydra_config, global_hydra_config):
         model=model, 
         rank=rank, 
         device=device,
+        wandb_run=wandb_run
     )
 
     if hydra_config.kind == 'gnn':
-            engine.set_dataset(dataset)
+        engine.set_dataset(dataset)
+        engine.split_path = hydra_config.data.dataset.split_path
     
     # keys to update in each dataloaders confic dictionnary           
     for task, task_config in hydra_config.tasks.items():
@@ -175,8 +182,12 @@ def run(rank, gpu_list, dataset, hydra_config, global_hydra_config):
     for task, task_config in hydra_config.tasks.items():
         getattr(engine, task)(**task_config)
 
+    wandb.finish()
+
     if len(gpu_list) > 1:
         destroy_process_group()
+
+    
     
 
 
