@@ -1,7 +1,10 @@
 import torch
 
-from watchmal.engine.reconstruction import ReconstructionEngine
 
+from watchmal.engine.reconstruction import ReconstructionEngine
+from watchmal.utils.logging_utils import setup_logging
+
+log = setup_logging(__name__)
 
 class ClassifierEngine(ReconstructionEngine):
     """Engine for performing training or evaluation for a classification network."""
@@ -11,7 +14,8 @@ class ClassifierEngine(ReconstructionEngine):
             model, 
             rank, 
             device, 
-            dump_path, 
+            dump_path,
+            wandb_run=None, 
             dataset=None,
             flatten_model_output=False, 
             prediction_threshold=None,
@@ -41,6 +45,7 @@ class ClassifierEngine(ReconstructionEngine):
             rank, 
             device, 
             dump_path,
+            wandb_run=wandb_run,
             dataset=dataset
         )
         

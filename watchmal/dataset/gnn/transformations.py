@@ -91,7 +91,7 @@ class DataToWatchmalDict(torch.nn.Module):
         - The class Negative Log Likelyhood of torch requires int as labels
     """
 
-    def __init__(self, target_to_type='int16'):
+    def __init__(self, target_to_type):
         super().__init__()
 
         match target_to_type:

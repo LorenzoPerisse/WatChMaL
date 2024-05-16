@@ -11,41 +11,47 @@ from omegaconf import DictConfig
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-# watchmal impport
-from watchmal.dataset.data_utils import get_dataset
-
-# hydra and log import
-import logging
+# hydra imports 
 from hydra.utils import instantiate
 
-#### Code
+# watchmal impport
+from watchmal.dataset.data_utils import get_dataset
+from watchmal.utils.logging_utils import setup_logging
 
-log = logging.getLogger(__name__)
+log = setup_logging(__name__)
+
 
 def build_dataset(config: DictConfig):
     log.info(f"Loading the dataset..")
 
-    dataset_config = config.data # data contains .dataset and .transforms
+    dataset_config   = config.data # data contains .dataset and .transforms
 
     dataset = get_dataset(
-        dataset_config.dataset.parameters, 
+        dataset_config.dataset.dataset_parameters, 
         dataset_config.transforms
     )
 
     log.info('Finished loading')
     log.info(f"Length of the dataset : {len(dataset)}")
-    log.info(f"First graph of the dataset : {dataset.get(0)}")
-    print("")
+    log.info(f"First graph of the dataset : {dataset[0]}")
+
+    if not dataset_config.dataset.fully_processed:
+        dataset.compute_edges(
+            **dataset_config.dataset.compute_edges_parameters
+        )
+        log.info(f"Called compute_edges. First graph is now : {dataset[0]}\n")
+
     return dataset
 
 
 def build_model(model_config, device, use_ddp=False):
     """
-    Device arg was kept in the case of gpu_id > 0 but only one gpu used
+    Build the model and wrap it with SynBatchNorm and  config if using torch DDP
     """
     model = instantiate(model_config)
-    if (device == 'cpu') or (use_ddp and device =='cuda:0'):
-        print(f"\nNumber of parameters in the model : {sum(p.numel() for p in model.parameters() if p.requires_grad)}\n")
+    if ( device == 'cpu') or ( str(device) in ['0', 'cuda:0'] ):
+        print()
+        log.info(f"Number of parameters in the model : {sum(p.numel() for p in model.parameters() if p.requires_grad)}\n")
 
     model.to(device)
 
@@ -57,3 +63,55 @@ def build_model(model_config, device, use_ddp=False):
         model = DDP(model, device_ids=[device])
 
     return model
+
+
+def merge_config(hydra_config, wandb_config):
+    """
+    Update Hydra configuration with values from W&B configuration if the keys match.
+    
+    Args:
+    - hydra_config (omegaconf.DictConfig): The Hydra configuration object.
+    - wandb_config (dict): The dictionary containing W&B configuration.
+    
+    Returns:
+    - hydra_config (omegaconf.DictConfig): The updated Hydra configuration object.
+    """
+    print("\n") # For display purpose
+    
+
+
+    modified_keys, not_found_keys =[], []
+    for key, value in wandb_config.items():
+		
+        # list_of_keys = ['data', 'dataset', 'root_file_path'] par ex.
+        list_of_keys = key.split("-") 
+
+        # key_name = ['root_file_path'] par ex.
+        key_name = list_of_keys[-1] 
+
+        # define the intial location 
+        location = hydra_config 
+
+        # Update the location based on the directory structure
+        try:
+            if len(list_of_keys) == 1:
+                i = list_of_keys[0]
+                location = location[i]
+            else:
+                for i in list_of_keys[0:-1]:
+                    location = location[i]
+            
+        except:
+            print(f"{list_of_keys} not found")
+            not_found_keys.append(key)
+
+        else:
+            location[key_name] = value
+            modified_keys.append(key)
+    
+        
+	# On sort de la boucle for sur wandb_config
+    print("Clés modifiées :", modified_keys)
+    print("Clés non modifiées :", not_found_keys, end="\n")
+
+    return hydra_config

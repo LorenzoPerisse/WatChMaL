@@ -2,6 +2,10 @@
 Utils for handling creation of dataloaders
 """
 
+# generic imports
+import numpy as np
+import random
+
 # hydra imports
 from hydra.utils import instantiate
 
@@ -9,16 +13,16 @@ from hydra.utils import instantiate
 import torch
 from torch.utils.data import DataLoader
 
-# generic imports
-import numpy as np
-import random
-
-# WatChMaL imports
-from watchmal.dataset.samplers.samplers import DistributedSamplerWrapper
-
 # pyg imports
 import torch_geometric.transforms as T
 from torch_geometric.loader import DataLoader as PyGDataLoader
+
+# WatChMaL imports
+from watchmal.dataset.samplers.samplers import DistributedSamplerWrapper
+from watchmal.utils.logging_utils import setup_logging
+
+log = setup_logging(__name__)
+
 
 
 def get_dataset(dataset_config, transforms_config=None):
@@ -26,16 +30,7 @@ def get_dataset(dataset_config, transforms_config=None):
     Instantiate a GraphCompose class with all the transformations passed in transforms_config
     Then instantiate a torch_geometric Dataset
     """
-    pre_transform_compose = None
     transform_compose = None
-
-    if 'pre_transforms' in transforms_config.keys():
-        pre_transform_list = []
-        for _, pre_trf_config in transforms_config['pre_transforms'].items():
-            pre_transform = instantiate(pre_trf_config)
-            pre_transform_list.append(pre_transform)
-
-        pre_transform_compose = T.Compose(pre_transform_list)
 
     if 'transforms' in transforms_config.keys():
         transform_list = []
@@ -45,9 +40,11 @@ def get_dataset(dataset_config, transforms_config=None):
         
         transform_compose = T.Compose(transform_list)
 
-    dataset = instantiate(dataset_config, pre_transform=pre_transform_compose, transform=transform_compose)
+    dataset = instantiate(
+        dataset_config, 
+        transform=transform_compose,
+    )
     
-
     return dataset
 
     # Combine transforms specified in data loader with transforms specified in dataset
@@ -60,7 +57,6 @@ def get_dataset(dataset_config, transforms_config=None):
     #transforms = dataset["transforms"] if (("transforms" in dataset) and (dataset["transforms"] is not None)) else []
     #transforms = (pre_transforms or []) + transforms + (post_transforms or [])
     #dataset = instantiate(dataset, transforms=(transforms or None))
-
 
 def get_data_loader_v2(
         dataset,
@@ -81,7 +77,7 @@ def get_data_loader_v2(
         split_indices = np.load(split_path, allow_pickle=True)[split_key]
         sampler=instantiate(sampler_config, indices=split_indices)
 
-    else : # We are in train or validation mode. There is randomness 
+    else : # if a seed is provided we consider randomness is asked.
         
         generator = torch.Generator(device=device)
         generator.manual_seed(seed)

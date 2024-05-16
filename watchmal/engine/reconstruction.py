@@ -7,8 +7,6 @@ import numpy as np
 from datetime import timedelta
 from datetime import datetime
 from abc import ABC, abstractmethod
-import logging
-import pprint
 
 # hydra imports
 from hydra.utils import instantiate
@@ -17,15 +15,11 @@ from hydra.utils import instantiate
 import torch
 from torch.nn.parallel import DistributedDataParallel
 
-# pyg imports
-from torch_geometric.nn import summary
-
 # WatChMaL imports
 from watchmal.dataset.data_utils import get_data_loader, get_data_loader_v2, get_dataset
-from watchmal.utils.logging_utils import CSVLog
+from watchmal.utils.logging_utils import CSVLog, setup_logging
 
-log = logging.getLogger(__name__)
-
+log = setup_logging(__name__)
 
 class ReconstructionEngine(ABC):
     def __init__(
@@ -35,6 +29,7 @@ class ReconstructionEngine(ABC):
             rank, 
             device, 
             dump_path,
+            wandb_run=None,
             dataset=None
         ):
         """
@@ -53,6 +48,7 @@ class ReconstructionEngine(ABC):
         """
         # create the directory for saving the log and dump files
         self.dump_path = dump_path
+        self.wandb_run= wandb_run
 
         # variables for the model
         self.rank = rank
@@ -66,7 +62,7 @@ class ReconstructionEngine(ABC):
         self.best_validation_loss = 1.0e10
 
         # variables for the dataset
-        self.dataset      = None if dataset is None else dataset
+        self.dataset      = dataset if dataset is not None else None
         self.split_path   = ""
         self.truth_key    = truth_key
 
@@ -76,9 +72,11 @@ class ReconstructionEngine(ABC):
         # Set up the parameters to save given the model type
         if isinstance(self.model, DistributedDataParallel): # 25/05/2024 - Erwan : Best way to check ddp mode ?
             self.is_distributed = True
-
             self.module = self.model.module
-            self.n_gpus = torch.distributed.get_world_size() # Returns the number of processes in the group. Not all the gpu availables
+            
+            # get_world_size() returns the number of processes in the group. Not all the gpu availables
+            self.n_gpus = torch.distributed.get_world_size()
+        
         else:
             self.is_distributed = False
             self.module = self.model
@@ -113,16 +111,6 @@ class ReconstructionEngine(ABC):
         """Instantiate a scheduler from a hydra config."""
         self.scheduler = instantiate(scheduler_config, optimizer=self.optimizer)
 
-
-    def configure_dataset(self, data_config):
-        """
-        Set up the dataset according to the data_config and the transform_config
-        There is only dataset for training and testing. The split train/test is made by the sampler 
-        initialized with the dataloader.
-        """
-        #print(f"Dataset config : {data_config.dataset}")
-        self.split_path = data_config.dataset.split_path # Initialized for data_loaders
-        self.dataset = get_dataset(data_config.dataset.parameters, data_config.transforms)
     
     def set_dataset(self, dataset):
         
@@ -131,7 +119,6 @@ class ReconstructionEngine(ABC):
             raise ValueError
 
         self.dataset = dataset
-        self.split_path = dataset.split_path
 
     def configure_data_loaders_v2(self, loaders_config):
         """
@@ -157,29 +144,6 @@ class ReconstructionEngine(ABC):
         # for name, loader_config in loaders_config.items():
         #    self.data_loaders[name] = get_data_loader(self.datasets, **loader_config, is_distributed=is_distributed, seed=seed)
 
-    def configure_data_loaders(self, data_config, loaders_config):
-        """
-        Set up data loaders from loaders hydra configs for the data config, and a list of data loader configs.
-
-        Parameters
-        ==========
-        data_config
-            Hydra config specifying dataset.
-        loaders_config
-            Hydra config specifying a list of dataloaders.
-        is_distributed : bool
-            Whether running in multiprocessing mode.
-        seed : int
-            Random seed to use to initialize dataloaders.
-        """
-
-        for name, loader_config in loaders_config.items():
-            self.data_loaders[name] = get_data_loader(
-                **data_config.h5_dataset, 
-                **loader_config, 
-                is_distributed=self.is_distributed, 
-                device=self.device
-            )
 
     def get_synchronized_outputs(self, output_dict):
         """
@@ -280,12 +244,14 @@ class ReconstructionEngine(ABC):
 
     def backward(self):
         """Backward pass using the loss computed for a mini-batch"""
-        self.optimizer.zero_grad()  # reset gradients from last step
+
+        self.optimizer.zero_grad()  # reset gradients
         self.loss.backward()        # compute the new gradients for this iteration
         self.optimizer.step()       # perform gradient descent on all the parameters of the model
+        
 
 
-    def train(self, epochs=0, val_interval=20, num_val_batches=4, checkpointing=False, save_interval=None):
+    def train(self, epochs=0, val_interval=20, checkpointing=False, save_interval=None):
         """
         Train the model on the training set. The best state is always saved during training.
 
@@ -308,10 +274,12 @@ class ReconstructionEngine(ABC):
         log.info(f"Engine : {self.rank} | Dataloaders : {self.data_loaders}")
         if self.rank == 0:
             #log.info(f"Training {epochs} epochs with {num_val_batches}-batch validation each {val_interval} iterations\n\n")
-            log.info(f"Starting training for {epochs} epochs\n\n")
+            #log.info(f"Starting training for {epochs} epochs\n\n")
+            print("\n")
+            log.info( f"\033[1;96m********** 🚀 Starting training for {epochs} epochs 🚀 **********\033[0m")
         
         # initialize epoch and iteration counters
-        epoch                = 0 # (used by nick)  counter of epoch
+        #epoch                = 0 # (used by nick)  counter of epoch
         self.iteration       = 1 # (used by erwan) counter of the steps of all epochs
         self.step            = 0 # (used by nick)  counter of the steps of one epoch
         
@@ -347,6 +315,12 @@ class ReconstructionEngine(ABC):
                 log.info(f"Total time since the beginning of the run : {epoch_end_time - start_run_time}")
                 log.info(f"Metrics over the (train) epoch {', '.join(f'{k}: {v:.5g}' for k, v in outputs_epoch_history.items())}")
 
+                if self.wandb_run is not None:
+                    self.wandb_run.log({
+                        'train_epoch_loss': outputs_epoch_history['loss'],
+                        'train_epoch_accuracy': outputs_epoch_history['accuracy']
+                    })
+
             
             # ---- Starting the validation epoch ---- #
             epoch_start_time = datetime.now()
@@ -355,9 +329,9 @@ class ReconstructionEngine(ABC):
                 log.info(f" -- Validation epoch starting at {epoch_start_time}")
 
             if self.is_distributed:
-                val_loader.sampler.set_epoch(val_loader.sampler.epoch) # Previously +1, why?
+                val_loader.sampler.set_epoch(self.epoch) # Previously +1, why?
                        
-            outputs_epoch_history = self.validate_v2(val_loader) # one validation epoch
+            outputs_epoch_history = self.validate(val_loader) # one validation epoch
 
             epoch_end_time = datetime.now()
 
@@ -374,6 +348,13 @@ class ReconstructionEngine(ABC):
                     **outputs_epoch_history, 
                     "saved_best": False
                 }
+
+                # --- Wandb --- #
+                if self.wandb_run is not None:
+                    self.wandb_run.log({
+                        'val_epoch_loss': outputs_epoch_history['loss'],
+                        'val_epoch_accuracy': outputs_epoch_history['accuracy']
+                    })
 
                 # Save if this is the best model so far
                 if outputs_epoch_history["loss"] < self.best_validation_loss:
@@ -397,8 +378,10 @@ class ReconstructionEngine(ABC):
 
 
     def sub_train(self, loader, val_interval):
-
-        self.module.train() # Set model to training mode
+        """
+        Each process performs its own sub_train. Outputs are gathered in the main train() loop.
+        """
+        self.model.train() # Set model to training mode
         outputs_epoch_history = {'loss': 0, 'accuracy': 0}
         
         for step, train_data in enumerate(loader):
@@ -413,7 +396,7 @@ class ReconstructionEngine(ABC):
             # Call backward: back-propagate error and update weights using loss = self.loss
             self.loss = outputs['loss']
             self.backward()
-            
+
             # run scheduler
             if self.scheduler is not None:
                 self.scheduler.step()
@@ -432,15 +415,18 @@ class ReconstructionEngine(ABC):
             }
             self.train_log.log(log_entries) # add logs in the .csv file (each process has its csv file)
             
-
+            if self.wandb_run is not None:
+                self.wandb_run.log({
+                    'train_batch_loss': outputs['loss'],
+                    'train_batch_accuracy': outputs['accuracy']}
+                )
             # --- Display --- #
             if ( step  % val_interval == 0 ):
-                log.info(f"GPU : {self.device} | Steps : {step + 1}/{len(loader)} | Iteration : {self.iteration + step} | Batch Size : {loader.batch_size}")
-                #print(f"GPU : {self.device} | Steps : {step} | Iteration : {self.iteration + step} | Batch Size : {loader.batch_size}")
+                #log.info(f"GPU : {self.device} | Steps : {step + 1}/{len(loader)} | Iteration : {self.iteration + step} | Batch Size : {loader.batch_size}")
                 
                 if ( self.rank == 0 ) :
-                    pass
-                    #log.info(f" Iteration {self.iteration + step}, train loss : {outputs['loss']:.5f}, accuracy : {outputs['accuracy']:.5f}")
+                    log.info(f"GPU : {self.device} | Steps : {step + 1}/{len(loader)} | Iteration : {self.iteration + step} | Batch Size : {loader.batch_size}")
+                    log.info(f" Iteration {self.iteration + step}, train loss : {outputs['loss']:.5f}, accuracy : {outputs['accuracy']:.5f}")
                     
         
         self.iteration += ( step + 1 )
@@ -451,14 +437,13 @@ class ReconstructionEngine(ABC):
  
         return outputs_epoch_history
 
-    def validate_v2(self, loader):
+    def validate(self, loader):
 
-        self.module.eval()
+        self.model.eval()
         outputs_epoch_history = {'loss': 0., 'accuracy': 0.}
 
         with torch.no_grad():
             
-
             for step, val_batch in enumerate(loader):
         
                 # Mount the batch of data to the device
@@ -485,97 +470,24 @@ class ReconstructionEngine(ABC):
                     outputs_epoch_history['loss']     += outputs['loss']
                     outputs_epoch_history['accuracy'] += outputs['accuracy']
 
+                # --- Logs --- #
+                if self.wandb_run is not None:
+                    self.wandb_run.log({
+                        'val_batch_loss': outputs['loss'],
+                        'val_batch_accuracy': outputs['accuracy']})
+
             # Take the mean over the epoch
             outputs_epoch_history['loss'] /= (step + 1)
             outputs_epoch_history['accuracy'] /= (step +1)
             
             return outputs_epoch_history
 
-    #  --- Step Logs --- # For now I see no reason to log at each step of the validation
-    # But I keep the code here if needed
-    # log_entries = {
-    #     "iteration": (self.iteration + step), 
-    #     "epoch": self.epoch, 
-    #     **outputs
-    # }
-
-    # self.val_log.log(log_entries) # add logs in the .csv file (each process has its csv file)
-
-
-    def validate(self, val_iter, num_val_batches, checkpointing):
-        """
-        Perform validation with the current state, on a number of batches of the validation set.
-
-        Parameters
-        ----------
-        val_iter : iter
-            Iterator of the validation dataset.
-        num_val_batches : int
-            Number of validation batches to iterate over.
-        checkpointing : bool
-            Whether to save the current state to disk.
-        """
-        # set model to eval mode
-        self.model.eval()
-        val_metrics = None
-
-        for val_batch in range(num_val_batches): # num_val_batches is defined in grant_gnn_train et pas basé sur le val_dataset ??
-            
-            # get validation data mini-batch
-            try:
-                val_data = next(val_iter)
-            
-            except StopIteration:
-                del val_iter
-                if self.is_distributed:
-                    self.data_loaders["validation"].sampler.set_epoch(self.data_loaders["validation"].sampler.epoch+1)
-                
-                val_iter = iter(self.data_loaders["validation"])
-                val_data = next(val_iter)
-            
-            # extract the event data and target from the input data dict
-            self.data = val_data['data'].to(self.device)
-            self.target = val_data[self.truth_key].to(self.device)
-            
-            # evaluate the network
-            outputs, metrics = self.forward(False)
-            if val_metrics is None:
-                val_metrics = metrics
-            else:
-                for k, v in metrics.items():
-                    val_metrics[k] += v
-
-        # record the validation stats to the csv
-        val_metrics = {k: v/num_val_batches for k, v in val_metrics.items()}
-        val_metrics = self.get_synchronized_metrics(val_metrics)
-
-        if self.rank == 0:
-            log_entries = {"iteration": self.iteration, "epoch": self.epoch, **val_metrics, "saved_best": False}
-            
-            # Save if this is the best model so far
-            print(f"  Validation {', '.join(f'{k}: {v:.5g}' for k, v in val_metrics.items())}", end="\n")
-            
-            if val_metrics["loss"] < self.best_validation_loss:
-                print(" ... Best validation loss so far!\n")
-                self.best_validation_loss = val_metrics["loss"]
-                self.save_state(suffix="_BEST")
-                log_entries["saved_best"] = True
-            else:
-                print("")
-           
-            # Save the latest model if checkpointing
-            if checkpointing:
-                self.save_state()
-            
-            self.val_log.log(log_entries)
-        
-
     def evaluate(self, report_interval=20):
         """Evaluate the performance of the trained model on the test set."""
         
         if self.rank == 0:
             log.info(f"\n\nEnd of the run. Test epoch starting.\nOutput directory: {self.dump_path}")
-        
+
         # Iterate over the validation set to calculate val_loss and val_acc
         with torch.no_grad():
             
@@ -623,11 +535,6 @@ class ReconstructionEngine(ABC):
        
         for k in eval_metrics.keys():
             eval_metrics[k] /= self.step+1
-       
-        # if self.is_distributed:
-        #     indices = self.data_loaders['test'].sampler.sampler.indices
-        # else :
-        #     indices = self.data_loaders['test'].sampler.indices 
 
         eval_outputs["indices"] = indices.to(self.device)
         eval_outputs[self.truth_key] = targets
@@ -642,40 +549,14 @@ class ReconstructionEngine(ABC):
             for k, v in eval_outputs.items():
                 np.save(self.dump_path + k + ".npy", v)
             # Compute overall evaluation metrics
-            for k, v in eval_metrics.items():
+            
+            for k, v in eval_metrics.items(): # loss + accuracy
                 log.info(f"Average evaluation {k}: {v:.4f}")
 
-
-    def new_evaluate(self, report_interval=20):
-        """
-        Evaluate the performance of the trained model on the test set.
-        Multi-processes is supported
-        
-        Pour le futur  :
-        
-            Even if there more than one gpu, the test will be done 
-            on the master (rank 0) one.
-            (Nécessite de changer l'instantiation du test_sampler)
-            To Do : compute the acceleration with multiple gpu : (Is n-gpus really usefull at test time ?)
-        """
-
-        self.module.eval()        
-        start_time = datetime.now()
-        loader = self.data_loaders['test']
-
-        indices = None
-
-        if self.rank == 0:
-            log.info(f"\n\nEnd of the training. Evaluation starting. \nOutput directory: {self.dump_path}")
-
-        for step, test_data in enumerate(loader):
-
-            self.data = test_data['data'].to(self.device)
-            self.target = test_data[self.truth_key].to(self.device)
-
-            metrics = self.forward(forward_type='test') # will ouput loss + accuracy + softmax of the preds
-            outputs = {'softmax': metrics.pop('softmax')} 
-
+                # --- Wandb --- #
+                if self.wandb_run is not None:
+                    name = 'test_' + k
+                    self.wandb_run.log({name: v})
 
 
     def save_state(self, suffix="", name=None):

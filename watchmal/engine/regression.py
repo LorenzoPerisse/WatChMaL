@@ -1,6 +1,10 @@
 import torch
 
 from watchmal.engine.reconstruction import ReconstructionEngine
+from watchmal.utils.logging_utils import setup_logging
+
+
+log = setup_logging(__name__)
 
 
 class RegressionEngine(ReconstructionEngine):

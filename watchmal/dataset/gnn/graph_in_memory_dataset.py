@@ -53,6 +53,7 @@ class GraphInMemoryDataset(RootDataset, InMemoryDataset):
             pre_filter=None,
             pre_transform=None,
             transform=None, 
+            force_reload=False,
             transforms=None # For compatibility with watchmal. In discussion with Nick to solve this redundancy.
     ):
     
