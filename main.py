@@ -27,7 +27,7 @@ import yaml
 
 # Watchmal import
 from watchmal.utils.logging_utils import setup_logging
-from watchmal.utils.build_utils import build_dataset, build_model
+from watchmal.utils.build_utils import build_dataset, build_model, merge_config
 
 
 #log = logging.getLogger(__name__)
@@ -46,9 +46,6 @@ def hydra_main(config):
     Args:
         config  ... hydra config specified in the @hydra.main annotation
     """
-    # Display the config of the run
-    y = OmegaConf.to_yaml(config)
-    log.info(f"Running with the following config:\n {y}\n")
 
     # Get the current and Hydra output directories for the run
     original_cwd = get_original_cwd()
@@ -70,19 +67,28 @@ def hydra_main(config):
 def main(hydra_config, global_hydra_config):
 
     gpu_list = hydra_config.gpu_list
-    # dump_path = hydra_config.dump_path
 
-    # # Create the output folder for all the runs only once
-    # if not os.path.exists(dump_path):
-    #     log.info(f"Creating directory for run output at : {dump_path}")
-    #     os.makedirs(dump_path)
+    if ( hydra_config.launch_wandb ) or ( 'WANDB_SWEEP_ID' in os.environ ):
+        wandb_config_from_hydra = hydra_config.wandb
+        wandb_config_from_hydra = OmegaConf.to_container(wandb_config_from_hydra, resolve=True)
+
+        wandb_run    = wandb.init(config=wandb_config_from_hydra)
+        wandb_config = wandb.config
+        hydra_config = merge_config(hydra_config, wandb_config)
+    else :
+        wandb_run =  None
+    
+
+    # Display the config(s) of the run 
+    # (after wandb.init() so it's stored in wandb logs)
+    y = OmegaConf.to_yaml(hydra_config)
+    log.info(f"Hydra config: \n{y}\n")
+    log.info(f"Wandb config : \n{wandb_config}\n")
 
     # Create or get the dataset (only for gnn, for cnn see run(..))
     # It's only when the dataset has to be processed that 
     # this part needs to be outside the run(..) function.
     # In the end we will need to make .root -> graph.pt outside of watchmal
-    wandb_run = wandb.init() if hydra_config.launch_wandb else None
-
     if hydra_config.kind == 'gnn':
         dataset = build_dataset(hydra_config)        
     else : # When using kind='cnn'
