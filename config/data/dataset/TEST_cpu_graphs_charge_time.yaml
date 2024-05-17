@@ -1,0 +1,31 @@
+# Note : 
+#   Config to use for a graph dataset
+#   that already has edges 
+#   (meaning : a fully processed dataset) .root -> graph -> graph with edges
+
+
+# Watchmal arguments
+split_path: /sps/t2k/eleblevec/updated_watchmal/index_lists/e_mu_500MeV_10each_train_val_test_index_list.npz
+fully_processed: True
+
+# When fully processed no need to re-compute the edges
+compute_edges_parameters: null
+
+dataset_parameters:
+
+  # --- Hydra arguments ---
+  _target_: watchmal.dataset.gnn.dataset_from_processed.DatasetFromProcessed
+  
+  # --- GraphDataset argument ---
+  #  graph_folder_path: /sps/t2k/eleblevec/datasets/graph_datasets/e_mu_100keach_100_1kMev_X_hits_t_Y_eventT
+  graph_folder_path: /sps/t2k/eleblevec/datasets/graph_datasets/e_mu_500MeV_10each
+  graph_file_names:
+    - data.pt
+  
+  verbose: 1
+  
+  # --- End ---
+
+
+
+

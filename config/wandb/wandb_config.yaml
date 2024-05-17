@@ -1,0 +1,11 @@
+
+
+entity: erwanlbv
+project: WatChMaL
+
+tags: 
+  - test
+  - run_only
+
+job_type: train_val_test
+notes: "Test to merge main.py and main_sweep.py"

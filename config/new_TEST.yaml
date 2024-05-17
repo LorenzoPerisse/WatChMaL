@@ -6,10 +6,10 @@ kind: gnn
 launch_wandb: True
 
 defaults:
-    - data/dataset: from_fully_processed
+    - data/dataset: TEST_cpu_graphs_charge_time
     - data/transforms: emu_class_charge_time_norm_transforms # data/transforms is available for graphs only
 
-    - tasks/train: graph_gpu_train_val
+    - tasks/train: TEST_cpu_graph
     - tasks/evaluate: graph_small_test
     - tasks/restore_best_state: restore_best_state
 
@@ -17,10 +17,11 @@ defaults:
     - sampler@tasks.train.data_loaders.validation.sampler_config: subset_sequential   
     - sampler@tasks.evaluate.data_loaders.test.sampler_config: subset_sequential
 
-    - model: resgnn
+    - model: TEST_resgated_2channels
     - engine: gnn_classifier
     - loss@tasks.train.loss: cross_entropy
     - optimizers@tasks.train.optimizers: adam
     - wandb: wandb_config
 
+    
     - _self_
