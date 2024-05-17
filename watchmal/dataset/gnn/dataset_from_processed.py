@@ -75,15 +75,17 @@ class DatasetFromProcessed(InMemoryDataset):
 
         # Load the pre_transform argument
         f = self.graph_folder_path + '/processed/pre_transform.pt'
+        log.info(f"Looking for pre_transform.pt at : {f}")
         if not osp.exists(f):
-            log.info(f"No pre_transform argument at :{f}")
+            log.info(f"No pre_transform.pt found")
             self.pre_transform = None
         else :
-            log.info("Found a pre_transorm.pt")
+            log.info(f"Found a pre_transorm.pt")
             self.pre_transform = torch.load(f)
 
         super().__init__(
             root=self.graph_folder_path, 
+            pre_transform=self.pre_transform,
             transform=self.transform,          # composition of transforms argument should go there. (Équivalent to torchvision "transformCompose class")
         )
 
