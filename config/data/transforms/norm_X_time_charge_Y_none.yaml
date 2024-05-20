@@ -1,13 +1,16 @@
 
 transforms:
 
+  # - Normalize - #
   Normalize:
     _target_: watchmal.dataset.gnn.transformations.Normalize
         
     feat_norm: 
-      - [3255., 3255., 3300., 2000.]
-      - [-3255., -3255.,  -3300., 550.]
+      - [2000., 1330.] 
+      - [550., 0.015]
 
+  # - Convert each data to a dictionnary when called by the loaders - #
   DataToWatchmalDict:
     _target_: watchmal.dataset.gnn.transformations.DataToWatchmalDict
+
     target_to_type: int16

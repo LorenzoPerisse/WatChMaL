@@ -1,0 +1,25 @@
+gpu_list: [] 
+
+kind: gnn
+launch_wandb: True
+
+defaults:
+    - data/dataset: debug_graph_cpu_class_X_time_c_Y_type
+    - data/transforms: debug_norm_X_hits_time_Y_none
+
+    - tasks/train: debug_graph_cpu
+    - tasks/evaluate: debug_graph_cpu
+    - tasks/restore_best_state: restore_best_state
+
+    - sampler@tasks.train.data_loaders.train.sampler_config: subset_random
+    - sampler@tasks.train.data_loaders.validation.sampler_config: subset_sequential   
+    - sampler@tasks.evaluate.data_loaders.test.sampler_config: subset_sequential
+
+    - model: debug_resgated_regression_4in_1out
+    - engine: debug_gnn_regresser
+    - loss@tasks.train.loss: mse
+    - optimizers@tasks.train.optimizers: adam
+    - wandb: debug_wandb
+
+    
+    - _self_

@@ -1,0 +1,10 @@
+
+
+entity: erwanlbv
+project: WatChMaL
+
+tags: 
+  - debug
+
+job_type: train_val_test
+notes: "Running another debug run :)"

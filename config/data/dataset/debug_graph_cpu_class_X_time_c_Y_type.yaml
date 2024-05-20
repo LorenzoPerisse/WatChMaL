@@ -18,7 +18,7 @@ dataset_parameters:
   
   # --- GraphDataset argument ---
   #  graph_folder_path: /sps/t2k/eleblevec/datasets/graph_datasets/e_mu_100keach_100_1kMev_X_hits_t_Y_eventT
-  graph_folder_path: /sps/t2k/eleblevec/datasets/graph_datasets/e_mu_500MeV_10each
+  graph_folder_path: /sps/t2k/eleblevec/datasets/graph_datasets/e_mu_10each_500Mev_X_hits_time_Y_type
   graph_file_names:
     - data.pt
   
