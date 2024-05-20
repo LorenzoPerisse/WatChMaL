@@ -5,7 +5,7 @@ project: WatChMaL
 
 tags: 
   - test
-  - run_only
+  - regression
 
 job_type: train_val_test
-notes: "Test to merge main.py and main_sweep.py"
+notes: "Test of the ugly adapted regression engine class"

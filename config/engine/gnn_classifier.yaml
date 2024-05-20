@@ -11,5 +11,7 @@ prediction_threshold: null
 # label_set: # ONLY FOR THE CLASSIFICATION ENGINE
 # IF THE DATA IS USING PID, CONVERT IT TO "CLASSES"
 # because classification in torc expects 0, 1... n ONLY
+# for [13, 11]
 #   - 13  # Would be class 0
-#   - 11  # Would be class 1
+#   - 11  # Would be class 1 
+# Note : it is CURRENTLY NOT SUPPORTDED

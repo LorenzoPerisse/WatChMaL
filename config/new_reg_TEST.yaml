@@ -7,7 +7,7 @@ launch_wandb: True
 
 defaults:
     - data/dataset: TEST_cpu_graphs_charge_time
-    - data/transforms: emu_class_charge_time_norm_transforms # data/transforms is available for graphs only
+    - data/transforms: emu_reg_charge_time_norm_transforms # data/transforms is available for graphs only
 
     - tasks/train: TEST_cpu_graph
     - tasks/evaluate: graph_small_test
@@ -17,9 +17,9 @@ defaults:
     - sampler@tasks.train.data_loaders.validation.sampler_config: subset_sequential   
     - sampler@tasks.evaluate.data_loaders.test.sampler_config: subset_sequential
 
-    - model: TEST_resgated_2channels
+    - model: TEST_regression_resgated_2channels
     - engine: gnn_regresser
-    - loss@tasks.train.loss: cross_entropy
+    - loss@tasks.train.loss: mse
     - optimizers@tasks.train.optimizers: adam
     - wandb: wandb_config
 
