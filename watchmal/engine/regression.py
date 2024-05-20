@@ -9,15 +9,17 @@ log = setup_logging(__name__)
 
 class RegressionEngine(ReconstructionEngine):
     """Engine for performing training or evaluation for a regression network."""
-    def __init__(self, 
-    truth_key, 
-    model, 
-    rank, 
-    device, 
-    dump_path, 
-    dataset=None,
-    output_center=0, 
-    output_scale=1
+    def __init__(
+        self, 
+        truth_key, 
+        model, 
+        rank, 
+        device, 
+        dump_path, 
+        wandb_run=None,
+        dataset=None,
+        output_center=0, 
+        output_scale=1
     ):
         """
         Parameters
@@ -38,12 +40,19 @@ class RegressionEngine(ReconstructionEngine):
             Value to divide target values by
         """
         # create the directory for saving the log and dump files
-        super().__init__(truth_key, model, rank, device, dump_path, dataset=dataset)
+        super().__init__(
+            truth_key, 
+            model, 
+            rank, 
+            device, 
+            dump_path, 
+            wandb_run=wandb_run,
+            dataset=dataset)
         
-        self.output_center = output_center
-        self.output_scale = output_scale
+        self.output_center = output_center # define for the cnn. No idea when it is used
+        self.output_scale = output_scale   # neither why to do scaling this way
 
-    def forward(self, train=True):
+    def forward(self, forward_type='train'):
         """
         Compute predictions and metrics for a batch of data
 
@@ -57,7 +66,11 @@ class RegressionEngine(ReconstructionEngine):
         dict
             Dictionary containing loss and predicted values
         """
-        with torch.set_grad_enabled(train):
+
+        outputs = {}
+        grad_enabled = True if forward_type == 'train' else False
+
+        with torch.set_grad_enabled(grad_enabled):
             # Previous version
             # model_out = self.model(self.data).reshape(self.target.shape)
             
@@ -67,12 +80,15 @@ class RegressionEngine(ReconstructionEngine):
              
             # New version version
             model_out = self.model(self.data)
-            self.loss = self.criterion(model_out, self.target)
+            loss = self.criterion(model_out, self.target)
 
-            outputs = {"predicted_" + self.truth_key: model_out}
-            metrics = {'loss': self.loss}
+            #outputs = {"predicted_" + self.truth_key: model_out}
+            #metrics = {'loss': self.loss}
+            outputs['accuracy'] = torch.mean(model_out)
+            outputs['loss']     = loss
         
-        return outputs, metrics
+
+        return outputs
 
     def scale_values(self, data):
         scaled = (data - self.output_center) / self.output_scale

@@ -121,6 +121,8 @@ class ClassifierEngine(ReconstructionEngine):
             # Add the metrics to the output dictionnary
             outputs['loss'] = loss
             outputs['accuracy'] = accuracy
+
+            # Note : this softmax saving will be modified. Even maybe deleted
             if forward_type == 'test': # In testing mode we also save the softmax values
                 outputs['softmax'] = softmax
 

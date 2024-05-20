@@ -238,6 +238,67 @@ class ReconstructionEngine(ABC):
         
         return new_outputs
     
+
+    def sub_train(self, loader, val_interval):
+        """
+        Each process performs its own sub_train. Outputs are gathered in the main train() loop.
+        """
+        self.model.train() # Set model to training mode
+        outputs_epoch_history = {'loss': 0, 'accuracy': 0}
+        
+        for step, train_data in enumerate(loader):
+            
+            # Mount the batch of data to the device
+            self.data = train_data['data'].to(self.device)
+            self.target = train_data[self.truth_key].to(self.device)                
+            
+            # Call forward: make a prediction & measure the average error using data = self.data
+            outputs = self.forward(forward_type='train')
+            
+            # Call backward: back-propagate error and update weights using loss = self.loss
+            self.loss = outputs['loss']
+            self.backward()
+
+            # run scheduler
+            if self.scheduler is not None:
+                self.scheduler.step()
+            
+            # If not detaching now ( with .item() ) all the data of the epoch will be load into GPU memory
+            # v.item() converts torch.tensors to python floats (and detachs + moves to cpu)
+            outputs = {k: v.item() for k, v in outputs.items()} 
+            outputs_epoch_history['loss']     += outputs['loss']
+            outputs_epoch_history['accuracy'] += outputs['accuracy']
+            
+            #  --- Logs --- #
+            log_entries = {
+                "iteration": (self.iteration + step), 
+                "epoch": self.epoch, 
+                **outputs
+            }
+            self.train_log.log(log_entries) # add logs in the .csv file (each process has its csv file)
+            
+            if self.wandb_run is not None:
+                self.wandb_run.log({
+                    'train_batch_loss': outputs['loss'],
+                    'train_batch_accuracy': outputs['accuracy']}
+                )
+            # --- Display --- #
+            if ( step  % val_interval == 0 ):
+                #log.info(f"GPU : {self.device} | Steps : {step + 1}/{len(loader)} | Iteration : {self.iteration + step} | Batch Size : {loader.batch_size}")
+                
+                if ( self.rank == 0 ) :
+                    log.info(f"GPU : {self.device} | Steps : {step + 1}/{len(loader)} | Iteration : {self.iteration + step} | Batch Size : {loader.batch_size}")
+                    log.info(f" Iteration {self.iteration + step}, train loss : {outputs['loss']:.5f}, accuracy : {outputs['accuracy']:.5f}")
+                    
+        
+        self.iteration += ( step + 1 )
+
+        # Take the mean over the epoch
+        outputs_epoch_history['loss'] /= (step + 1)
+        outputs_epoch_history['accuracy'] /= (step +1)
+
+        return outputs_epoch_history
+
     @abstractmethod
     def forward(self, forward_type='train'):
         pass 
@@ -249,8 +310,6 @@ class ReconstructionEngine(ABC):
         self.loss.backward()        # compute the new gradients for this iteration
         self.optimizer.step()       # perform gradient descent on all the parameters of the model
         
-
-
     def train(self, epochs=0, val_interval=20, checkpointing=False, save_interval=None):
         """
         Train the model on the training set. The best state is always saved during training.
@@ -375,68 +434,6 @@ class ReconstructionEngine(ABC):
         if self.rank == 0:
             self.val_log.close() # Closing the .csv val file
 
-
-
-    def sub_train(self, loader, val_interval):
-        """
-        Each process performs its own sub_train. Outputs are gathered in the main train() loop.
-        """
-        self.model.train() # Set model to training mode
-        outputs_epoch_history = {'loss': 0, 'accuracy': 0}
-        
-        for step, train_data in enumerate(loader):
-            
-            # Mount the batch of data to the device
-            self.data = train_data['data'].to(self.device)
-            self.target = train_data[self.truth_key].to(self.device)                
-            
-            # Call forward: make a prediction & measure the average error using data = self.data
-            outputs = self.forward(forward_type='train')
-            
-            # Call backward: back-propagate error and update weights using loss = self.loss
-            self.loss = outputs['loss']
-            self.backward()
-
-            # run scheduler
-            if self.scheduler is not None:
-                self.scheduler.step()
-            
-            # If not detaching now ( with .item() ) all the data of the epoch will be load into GPU memory
-            # v.item() converts torch.tensors to python floats (and detachs + moves to cpu)
-            outputs = {k: v.item() for k, v in outputs.items()} 
-            outputs_epoch_history['loss']     += outputs['loss']
-            outputs_epoch_history['accuracy'] += outputs['accuracy']
-            
-            #  --- Logs --- #
-            log_entries = {
-                "iteration": (self.iteration + step), 
-                "epoch": self.epoch, 
-                **outputs
-            }
-            self.train_log.log(log_entries) # add logs in the .csv file (each process has its csv file)
-            
-            if self.wandb_run is not None:
-                self.wandb_run.log({
-                    'train_batch_loss': outputs['loss'],
-                    'train_batch_accuracy': outputs['accuracy']}
-                )
-            # --- Display --- #
-            if ( step  % val_interval == 0 ):
-                #log.info(f"GPU : {self.device} | Steps : {step + 1}/{len(loader)} | Iteration : {self.iteration + step} | Batch Size : {loader.batch_size}")
-                
-                if ( self.rank == 0 ) :
-                    log.info(f"GPU : {self.device} | Steps : {step + 1}/{len(loader)} | Iteration : {self.iteration + step} | Batch Size : {loader.batch_size}")
-                    log.info(f" Iteration {self.iteration + step}, train loss : {outputs['loss']:.5f}, accuracy : {outputs['accuracy']:.5f}")
-                    
-        
-        self.iteration += ( step + 1 )
-
-        # Take the mean over the epoch
-        outputs_epoch_history['loss'] /= (step + 1)
-        outputs_epoch_history['accuracy'] /= (step +1)
- 
-        return outputs_epoch_history
-
     def validate(self, loader):
 
         self.model.eval()
@@ -505,20 +502,20 @@ class ReconstructionEngine(ABC):
                 self.target = eval_data[self.truth_key].to(self.device)
 
                 metrics = self.forward(forward_type='test') # will ouput loss + accuracy + softmax of the preds
-                outputs = {'softmax': metrics.pop('softmax')} 
+                #outputs = {'softmax': metrics.pop('softmax')} 
 
                 # Add the local result to the final result
                 if self.step == 0:
                     indices = eval_data['indices']
                     targets = self.target
-                    eval_outputs = outputs
+                    #eval_outputs = outputs
                     eval_metrics = metrics
                 else:
                     indices = torch.cat((indices, eval_data['indices']))
                     targets = torch.cat((targets, self.target))
                     
-                    for k in eval_outputs.keys():
-                        eval_outputs[k] = torch.cat((eval_outputs[k], outputs[k]))
+                    # for k in eval_outputs.keys():
+                    #     eval_outputs[k] = torch.cat((eval_outputs[k], outputs[k]))
 
                     for k in eval_metrics.keys():
                         eval_metrics[k] += metrics[k]
@@ -536,18 +533,18 @@ class ReconstructionEngine(ABC):
         for k in eval_metrics.keys():
             eval_metrics[k] /= self.step+1
 
-        eval_outputs["indices"] = indices.to(self.device)
-        eval_outputs[self.truth_key] = targets
+        #eval_outputs["indices"] = indices.to(self.device)
+        #eval_outputs[self.truth_key] = targets
        
         # Gather results from all processes
         eval_metrics = self.get_synchronized_metrics(eval_metrics)
-        eval_outputs = self.get_synchronized_outputs(eval_outputs)
+        #eval_outputs = self.get_synchronized_outputs(eval_outputs)
         
         if self.rank == 0:
             # Save overall evaluation results
             log.info("Saving Data...")
-            for k, v in eval_outputs.items():
-                np.save(self.dump_path + k + ".npy", v)
+            #{for k, v in eval_outputs.items():
+            #    np.save(self.dump_path + k + ".npy", v)
             # Compute overall evaluation metrics
             
             for k, v in eval_metrics.items(): # loss + accuracy
