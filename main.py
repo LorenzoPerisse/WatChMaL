@@ -72,9 +72,18 @@ def main(hydra_config, global_hydra_config):
         wandb_config_from_hydra = hydra_config.wandb
         wandb_config_from_hydra = OmegaConf.to_container(wandb_config_from_hydra, resolve=True)
 
-        wandb_run    = wandb.init(config=wandb_config_from_hydra)
+        wandb_run    = wandb.init(**wandb_config_from_hydra)
         wandb_config = wandb.config
         hydra_config = merge_config(hydra_config, wandb_config)
+
+        # Save this dictionary to a yaml file to make it tracked by wandb
+        # (This is useless but mandatory by wandb.
+        log_config_path = os.getcwd() + '/hydra_final_config.yaml'
+        with open(log_config_path, 'w') as yaml_file:
+            hydra_config_as_dict = OmegaConf.to_container(hydra_config, resolve=True)
+            yaml.dump(hydra_config_as_dict, yaml_file, default_flow_style=False)        
+
+        wandb.save(log_config_path)
     else :
         wandb_run =  None
     
@@ -83,7 +92,8 @@ def main(hydra_config, global_hydra_config):
     # (after wandb.init() so it's stored in wandb logs)
     y = OmegaConf.to_yaml(hydra_config)
     log.info(f"Hydra config: \n{y}\n")
-    log.info(f"Wandb config : \n{wandb_config}\n")
+    if wandb_run is not None :
+        log.info(f"Wandb config : \n{wandb_config}\n")
 
     # Create or get the dataset (only for gnn, for cnn see run(..))
     # It's only when the dataset has to be processed that 
