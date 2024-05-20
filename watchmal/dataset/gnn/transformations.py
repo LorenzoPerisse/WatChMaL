@@ -114,7 +114,7 @@ class DataToWatchmalDict(torch.nn.Module):
 
         watchmal_dict = {
             'data': data,
-            'target': data.y.to(self.target_to_type).item(),
+            'target': data.y.to(self.target_to_type),
             'indices': data.idx # wtf le s n'a pas de sens ptn; à modifier dans engine.evaluate()
         }
 
