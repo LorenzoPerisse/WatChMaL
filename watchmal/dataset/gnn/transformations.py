@@ -11,6 +11,10 @@ from torch_geometric.data.datapipes import functional_transform
 from torch_geometric.transforms import BaseTransform
 from torch_geometric.utils import to_undirected
 
+from watchmal.utils.logging_utils import setup_logging
+
+log = setup_logging(__name__)
+
 
 """
 This file should contain all the callables (i.e python functions or class with a __call__ attribut) 
@@ -99,13 +103,15 @@ class DataToWatchmalDict(torch.nn.Module):
                 to_type = torch.int16
             case 'int32':
                 to_type = torch.int32
+            case 'int64':
+                to_type = torch.int64
             case 'float16':
                 to_type = torch.float16
             case 'float32':
                 to_type = torch.float32
             case _:
-                print(f"DataToWatchmalDict : Value Error, target_to_type {target_to_type} is not supported")
-                print("Add the data type into the transform or change the new target type")
+                log.info(f"DataToWatchmalDict : Value Error, target_to_type {target_to_type} is not supported")
+                log.info("Add the data type into the transform or change the new target type\n\n")
                 raise ValueError
             
         self.target_to_type = to_type
