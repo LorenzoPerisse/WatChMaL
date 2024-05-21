@@ -8,6 +8,7 @@ from datetime import timedelta
 from datetime import datetime
 from abc import ABC, abstractmethod
 
+import wandb
 # hydra imports
 from hydra.utils import instantiate
 
@@ -92,11 +93,11 @@ class ReconstructionEngine(ABC):
         self.scheduler = None
 
         # logging attributes
-        self.train_log = CSVLog(self.dump_path + f"log_train_{self.rank}.csv")
+        #self.train_log = CSVLog(self.dump_path + f"log_train_{self.rank}.csv")
         #self.val_log = CSVLog(self.dump_path + f"log_val_{self.rank}.csv")
 
-        if self.rank == 0:
-            self.val_log = CSVLog(self.dump_path + "log_val.csv") # Only rank 0 will save its performances at validation in a .csv file
+        # if self.rank == 0:
+        #     self.val_log = CSVLog(self.dump_path + "log_val.csv") # Only rank 0 will save its performances at validation in a .csv file
 
 
 
@@ -270,12 +271,12 @@ class ReconstructionEngine(ABC):
             outputs_epoch_history['accuracy'] += outputs['accuracy']
             
             #  --- Logs --- #
-            log_entries = {
-                "iteration": (self.iteration + step), 
-                "epoch": self.epoch, 
-                **outputs
-            }
-            self.train_log.log(log_entries) # add logs in the .csv file (each process has its csv file)
+            # log_entries = {
+            #     "iteration": (self.iteration + step), 
+            #     "epoch": self.epoch, 
+            #     **outputs
+            # }
+            #self.train_log.log(log_entries) # add logs in the .csv file (each process has its csv file)
             
             if self.wandb_run is not None:
                 self.wandb_run.log({
@@ -401,12 +402,12 @@ class ReconstructionEngine(ABC):
                 log.info(f" -- Metrics over the (val) epoch {', '.join(f'{k}: {v:.5g}' for k, v in outputs_epoch_history.items())}")
                                 
                 # --- Logs ---- #
-                log_entries = {
-                    "iteration": self.iteration, 
-                    "epoch": self.epoch, 
-                    **outputs_epoch_history, 
-                    "saved_best": False
-                }
+                # log_entries = {
+                #     "iteration": self.iteration, 
+                #     "epoch": self.epoch, 
+                #     **outputs_epoch_history, 
+                #     "saved_best": False
+                # }
 
                 # --- Wandb --- #
                 if self.wandb_run is not None:
@@ -419,7 +420,7 @@ class ReconstructionEngine(ABC):
                 if outputs_epoch_history["loss"] < self.best_validation_loss:
                     log.info(" ... Best validation loss so far!")
                     self.best_validation_loss = outputs_epoch_history["loss"]
-                    log_entries["saved_best"] = True
+                    #log_entries["saved_best"] = True
 
                     self.save_state(suffix="_BEST")
 
@@ -427,12 +428,12 @@ class ReconstructionEngine(ABC):
                     # if checkpointing = True the model is saved at the end of each validation epoch
                     self.save_state()
                 
-                self.val_log.log(log_entries)
+                #self.val_log.log(log_entries)
                 
 
-        self.train_log.close() # Closing the .csv train file
-        if self.rank == 0:
-            self.val_log.close() # Closing the .csv val file
+        #self.train_log.close() # Closing the .csv train file
+        # if self.rank == 0:
+        #     self.val_log.close() # Closing the .csv val file
 
     def validate(self, loader):
 
@@ -490,65 +491,55 @@ class ReconstructionEngine(ABC):
             
             # Set the model to evaluation mode
             self.model.eval()
-            
+            outputs_epoch_history = {'loss': 0., 'accuracy': 0.}
+    
             # evaluation loop
             start_time = datetime.now()
-            step_time = start_time
-            steps_per_epoch = len(self.data_loaders["test"])
-            
-            for self.step, eval_data in enumerate(self.data_loaders["test"]):
+
+            loader = self.data_loaders['test']            
+            for step, eval_data in enumerate(loader):
                 
                 self.data = eval_data['data'].to(self.device)
                 self.target = eval_data[self.truth_key].to(self.device)
 
-                metrics = self.forward(forward_type='test') # will ouput loss + accuracy + softmax of the preds
-                #outputs = {'softmax': metrics.pop('softmax')} 
-
-                # Add the local result to the final result
-                if self.step == 0:
-                    indices = eval_data['indices']
-                    targets = self.target
-                    #eval_outputs = outputs
-                    eval_metrics = metrics
-                else:
-                    indices = torch.cat((indices, eval_data['indices']))
-                    targets = torch.cat((targets, self.target))
+                outputs = self.forward(forward_type='test') # will ouput loss + accuracy + softmax of the preds (for classification)
+                if 'softmax' in outputs:
+                    outputs.pop('softmax')
                     
-                    # for k in eval_outputs.keys():
-                    #     eval_outputs[k] = torch.cat((eval_outputs[k], outputs[k]))
+                # In case of ddp we reduce outputs to get the global performance
+                # Note : It is currently done at each step to optimize gpu memory usage
+                # But this could also be perform at the end of the validation epoch
+                if self.is_distributed:
+                    outputs = self.get_synchronized(outputs)
 
-                    for k in eval_metrics.keys():
-                        eval_metrics[k] += metrics[k]
-               
-                # print the metrics at given intervals
-                if self.rank == 0 and self.step % report_interval == 0:
-                    previous_step_time = step_time
-                    step_time = datetime.now()
-                    average_step_time = (step_time - previous_step_time)/report_interval
-                    print(f"Step {self.step}/{steps_per_epoch}"
-                          f" Evaluation {', '.join(f'{k}: {v:.5g}' for k, v in metrics.items())},"
-                          f" Step time {average_step_time},"
-                          f" Total time {step_time-start_time}")
-       
-        for k in eval_metrics.keys():
-            eval_metrics[k] /= self.step+1
+                outputs = {k: v.item() for k, v in outputs.items()}    
 
-        #eval_outputs["indices"] = indices.to(self.device)
-        #eval_outputs[self.truth_key] = targets
-       
-        # Gather results from all processes
-        eval_metrics = self.get_synchronized_metrics(eval_metrics)
-        #eval_outputs = self.get_synchronized_outputs(eval_outputs)
+                if self.rank == 0: 
+                    # --- Storing performances --- #
+                    outputs_epoch_history['loss']     += outputs['loss']
+                    outputs_epoch_history['accuracy'] += outputs['accuracy'] 
+
+                    # --- Logs --- #
+                    if ( step % report_interval == 0 ):
+                        log.info(
+                            f"  Step {step + 1}/{len(loader)}"
+                            f"  Evaluation {', '.join(f'{k}: {v:.5g}' for k, v in outputs.items())},"
+                        )
+    
+        outputs_epoch_history['loss'] /= step + 1
+        outputs_epoch_history['accuracy'] /= step + 1 
+        end_time = datetime.now()
         
         if self.rank == 0:
-            # Save overall evaluation results
-            log.info("Saving Data...")
-            #{for k, v in eval_outputs.items():
-            #    np.save(self.dump_path + k + ".npy", v)
-            # Compute overall evaluation metrics
+
+            log.info(f"Evaluation total time {end_time - start_time}")
             
-            for k, v in eval_metrics.items(): # loss + accuracy
+            # --- Save overall evaluation results --- #
+            log.info("Saving Data...")
+            for k, v in outputs_epoch_history.items():
                 log.info(f"Average evaluation {k}: {v:.4f}")
+
+                np.save(self.dump_path + k + ".npy", v)
 
                 # --- Wandb --- #
                 if self.wandb_run is not None:
@@ -575,21 +566,35 @@ class ReconstructionEngine(ABC):
         if name is None:
             name = f"{self.__class__.__name__}_{self.module.__class__.__name__}"
        
-        filename = f"{self.dump_path}{name}{suffix}.pth"
+        filename = f"{self.dump_path}{name}{suffix}.pth" # for model + optimizer state
         
         # Save model state dict in appropriate from depending on number of gpus
         model_dict = self.module.state_dict()
+        optimizer_dict = self.optimizer.state_dict()
         
         # Save parameters
-        # 0+1) iteration counter + optimizer state => in case we want to "continue training" later
+        # 0) iteration counter
+        # 1) optimizer state => 0+1 in case we want to "continue training" later
         # 2) network weight
         
         torch.save({
             'global_step': self.iteration,
-            'optimizer': self.optimizer.state_dict(),
+            'optimizer': optimizer_dict,
             'state_dict': model_dict
         }, filename)
         
+        # Wandb Artifact to monitor models
+        if self.wandb_run is not None:
+            artifact = wandb.Artifact(name=f"model-and-opti-checkpoints-{wandb.run.id}", type="model-and-opti")
+            artifact.add_file(filename)
+            
+            aliases = ['ite_' + str(self.iteration)]
+            if suffix:
+                aliases.append(suffix)
+            wandb.log_artifact(artifact, aliases=aliases)
+
+            log.info("Save state on wandb")
+
         log.info(f"Saved state as: {filename}")
         
         return filename
@@ -600,22 +605,30 @@ class ReconstructionEngine(ABC):
         # Open a file in read-binary mode
         with open(weight_file, 'rb') as f:
             log.info(f"Restoring state from {weight_file}\n")
+           
             # prevent loading while DDP operations are happening
             if self.is_distributed:
                 torch.distributed.barrier()
+            
             # torch interprets the file, then we can access using string keys
             checkpoint = torch.load(f, map_location=self.device)
+            
             # load network weights
             self.module.load_state_dict(checkpoint['state_dict'])
+        
             # if optim is provided, load the state of the optim
             if self.optimizer is not None:
                 self.optimizer.load_state_dict(checkpoint['optimizer'])
+            
             # load iteration count
             self.iteration = checkpoint['global_step']
 
-    def restore_best_state(self, name=None):
+    def restore_best_state(self, name=None, complete_path=False):
         """Restore model using best model found in current directory."""
+
         if name is None:
             name = f"{self.__class__.__name__}_{self.module.__class__.__name__}"
-        self.restore_state(f"{self.dump_path}{name}_BEST.pth")
+            
+        full_path = name if complete_path else f"{self.dump_path}{name}_BEST.pth"
+        self.restore_state(full_path)
 
