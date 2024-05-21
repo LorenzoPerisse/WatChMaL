@@ -97,11 +97,12 @@ class ClassifierEngine(ReconstructionEngine):
         with torch.set_grad_enabled(grad_enabled):
     
             model_out = self.model(self.data) # even in ddp, the forward is done with self.model and not self.module
-
+            
             # Compute the loss
             if self.flatten_model_output:
                 model_out = torch.flatten(model_out)
 
+            self.target = self.target.reshape(-1)
             loss = self.criterion(model_out, self.target)
 
             # Apply softmax to model_out
