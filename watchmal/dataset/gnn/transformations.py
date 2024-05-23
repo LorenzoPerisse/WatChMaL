@@ -11,6 +11,8 @@ from torch_geometric.data.datapipes import functional_transform
 from torch_geometric.transforms import BaseTransform
 from torch_geometric.utils import to_undirected
 
+# watchmal imports
+from watchmal.dataset.data_utils import match_type
 from watchmal.utils.logging_utils import setup_logging
 
 log = setup_logging(__name__)
@@ -47,7 +49,7 @@ class Normalize(torch.nn.Module):
             self, 
             feat_norm,
             label_norm=None, 
-            eps=1e-12, 
+            eps=1e-8, 
             inplace=False        
     ):
         
@@ -82,47 +84,100 @@ class Normalize(torch.nn.Module):
 
         return data
 
-class DataToWatchmalDict(torch.nn.Module):
+# class DataToWatchmalDict(torch.nn.Module):
+#     """
+#     Arguments:
+#         target_to_type (string) : type to convert the target to 
+
+#     Forward method : 
+#         .item() required in watchmal for the collate_fn to create a (b_size, ) instead of (b_size, 1)
+        
+#     Note :
+#         - "idx" is only used when looking at the output folder (for evaluation only in watchmal)
+#         - The class Negative Log Likelyhood of torch requires int as labels
+#     """
+
+#     def __init__(self, target_to_type):
+#         super().__init__()
+
+#         match target_to_type:
+#             case 'int16':
+#                 to_type = torch.int16
+#             case 'int32':
+#                 to_type = torch.int32
+#             case 'int64':
+#                 to_type = torch.int64
+#             case 'float16':
+#                 to_type = torch.float16
+#             case 'float32':
+#                 to_type = torch.float32
+#             case _:
+#                 log.info(f"DataToWatchmalDict : Value Error, target_to_type {target_to_type} is not supported")
+#                 log.info("Add the data type into the transform or change the new target type\n\n")
+#                 raise ValueError
+            
+#         self.target_to_type = to_type
+
+#     def forward(self, data):
+
+#         if isinstance(data, dict): # If the data has already been wrapped into a dict, no need to do it again
+#             return data
+#         # Note : See in_memory_dataset code "get" method for more details about 
+#         # why becomes a dict after on pass (copy vs deepcopy)
+
+
+#         watchmal_dict = {
+#             'data': data,
+#             'target': data.y.to(self.target_to_type),
+#             'indices': data.idx # wtf le s n'a pas de sens ptn; à modifier dans engine.evaluate()
+#         }
+
+#         return watchmal_dict 
+    
+
+class ConvertAndToDict(torch.nn.Module):
     """
     Arguments:
-        target_to_type (string) : type to convert the target to 
-
-    Forward method : 
-        .item() required in watchmal for the collate_fn to create a (b_size, ) instead of (b_size, 1)
+        feature_to_type (string)      : type to convert each feature to
+        target_to_type (string)       : type to convert the target to 
+        map_labels (list of integers) : which label to assign the PID to. 
+            For example map_labels=[11, 13, 111] will convert 11 -> 0, 13 -> 1 and 111 -> 2. 
         
     Note :
         - "idx" is only used when looking at the output folder (for evaluation only in watchmal)
         - The class Negative Log Likelyhood of torch requires int as labels
     """
 
-    def __init__(self, target_to_type):
+    def __init__(self, feature_to_type: str, target_to_type: str, map_labels: list=None):
         super().__init__()
 
-        match target_to_type:
-            case 'int16':
-                to_type = torch.int16
-            case 'int32':
-                to_type = torch.int32
-            case 'int64':
-                to_type = torch.int64
-            case 'float16':
-                to_type = torch.float16
-            case 'float32':
-                to_type = torch.float32
-            case _:
-                log.info(f"DataToWatchmalDict : Value Error, target_to_type {target_to_type} is not supported")
-                log.info("Add the data type into the transform or change the new target type\n\n")
-                raise ValueError
-            
-        self.target_to_type = to_type
+        # We consider homogeneous graphs for now (the 'Data' obj). 
+        # So all features are of the same type
+        # Hence the should be converted to the same type also (no need to make a list for feat..type and target..type)
+        self.feature_to_type = match_type(feature_to_type) 
+        self.target_to_type  = match_type(target_to_type)
+        self.map_labels      = map_labels
 
     def forward(self, data):
 
-        watchmal_dict = {
+        # If the data has already been wrapped into a dict, no need to do it again
+        # See the in_memory_dataset "get" method for more details about 
+        # why it becomes a dict after on pass (copy vs deepcopy)
+        if isinstance(data, dict): 
+            return data
+
+        data.x = data.x.to(self.feature_to_type)
+
+        if self.map_labels is not None:
+            data.y = torch.tensor(self.map_labels.index(data.y))
+        data.y = data.y.to(self.target_to_type)
+
+
+        data_dict = {
             'data': data,
-            'target': data.y.to(self.target_to_type),
-            'indices': data.idx # wtf le s n'a pas de sens ptn; à modifier dans engine.evaluate()
+            'target': data.y,
+            'indice': data.idx # might a better for for this. We duplicate the idx information (data + dict)
         }
 
-        return watchmal_dict 
+        return data_dict 
     

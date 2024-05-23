@@ -277,17 +277,40 @@ def apply_random_transformations(transforms, data, segmented_labels=None):
                     segmented_labels = transformation(segmented_labels)
     return data
 
-
-def squeeze_and_convert(data_dict, keys, index, to_tensor=False, to_type=torch.float32):
+# Deprecated
+# def squeeze_and_convert(data_dict, keys, index, to_tensor=False, to_type=torch.float32):
     
-    feature_list = []
-    for key in keys:
-        feature = data_dict[key][index]
-        feature_list.append(feature)
+#     feature_list = []
+#     for key in keys:
+#         feature = data_dict[key][index]
+#         feature_list.append(feature)
             
-    features = np.transpose(np.squeeze(np.array(feature_list)))
-    if to_tensor:
-        features = torch.from_numpy(features) if len(features.shape) >= 1 else torch.tensor(features)
-        features = features.to(to_type)
+#     features = np.transpose(np.squeeze(np.array(feature_list)))
+#     if to_tensor:
+#         features = torch.from_numpy(features) if len(features.shape) >= 1 else torch.tensor(features)
+#         features = features.to(to_type)
 
-    return features
+#     return features
+
+
+def match_type(obj_type: str):
+
+    match obj_type:
+        case 'int16':
+            to_type = torch.int16
+        case 'int32':
+            to_type = torch.int32
+        case 'int64':
+            to_type = torch.int64
+        case 'float16':
+            to_type = torch.float16
+        case 'float32':
+            to_type = torch.float32
+        case 'float64':
+            to_type = torch.float64
+        case _:
+            log.info(f"match_type : Value Error, to_type {to_type} is not supported")
+            log.info("Add the data type into the functionn or change the new target type\n\n")
+            raise ValueError
+
+    return to_type
