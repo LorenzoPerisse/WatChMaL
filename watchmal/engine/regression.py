@@ -67,29 +67,37 @@ class RegressionEngine(ReconstructionEngine):
             Dictionary containing loss and predicted values
         """
 
+        metrics = {}
         outputs = {}
         grad_enabled = True if forward_type == 'train' else False
 
         with torch.set_grad_enabled(grad_enabled):
-            # Previous version
-            # model_out = self.model(self.data).reshape(self.target.shape)
-            
-            # scaled_target = self.scale_values(self.target)
-            # scaled_model_out = self.scale_values(model_out)
-            # self.loss = self.criterion(scaled_model_out, scaled_target)
-             
+
             # New version version
             model_out = self.model(self.data)
+            model_out = model_out.reshape(-1)
             loss = self.criterion(model_out, self.target)
 
-            #outputs = {"predicted_" + self.truth_key: model_out}
+            #metrics = {"predicted_" + self.truth_key: model_out}
             #metrics = {'loss': self.loss}
-            outputs['accuracy'] = torch.mean(model_out)
-            outputs['loss']     = loss
-        
+            metrics['accuracy'] = torch.mean(model_out) # Irrelevant. Kepts for compatibility with the engine's evaluate method. To be fixed
+            metrics['loss']     = loss
 
-        return outputs
+            if forward_type == 'test':
+                outputs['pred'] = model_out
+
+        # metrics and potentially outputs are still on the computational graph        
+        return metrics, outputs
 
     def scale_values(self, data):
         scaled = (data - self.output_center) / self.output_scale
         return scaled
+
+
+
+    # From previous version (for cnn, but unused by the config files)
+    # model_out = self.model(self.data).reshape(self.target.shape)
+
+    # scaled_target = self.scale_values(self.target)
+    # scaled_model_out = self.scale_values(model_out)
+    # self.loss = self.criterion(scaled_model_out, scaled_target)

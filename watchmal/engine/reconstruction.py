@@ -48,7 +48,7 @@ class ReconstructionEngine(ABC):
             The path to store outputs in.
         """
         # create the directory for saving the log and dump files
-        self.dump_path = dump_path
+        self.dump_path = dump_path # already contains the last '/'
         self.wandb_run= wandb_run
 
         # variables for the model
@@ -171,6 +171,7 @@ class ReconstructionEngine(ABC):
                     torch.distributed.gather(tensor, dst=0)
             else:
                 global_output_dict[name] = tensor.detach().cpu().numpy()
+
         return global_output_dict
 
     def get_synchronized_metrics(self, metric_dict):
@@ -204,7 +205,7 @@ class ReconstructionEngine(ABC):
         
         return global_metric_dict
 
-    def get_synchronized(self, outputs):
+    def get_reduced(self, outputs):
         """
         Gathers metrics from multiple processes using pytorch 
         distributed operations for DistributedDataParallel
@@ -236,9 +237,42 @@ class ReconstructionEngine(ABC):
                 new_outputs[name] = tensor / self.n_gpus 
 
             #new_outputs[name] = tensor.item() # to detach and convert the tensor for each of the processes.
+            # decision to do this after. get_reduce should only reduce, not detach (as the name suggest)
         
         return new_outputs
-    
+
+    def get_gathered(self, inputs):
+        """
+        Gathers metrics from multiple processes using pytorch 
+        distributed operations for DistributedDataParallel
+
+        Note :  Only modifies rank O's outputs dictionnary
+                Tensors are kept. (Nothing is converted via .item())
+        Parameters
+        ==========
+        outputs : dict
+            Dictionary containing values that are tensor outputs of a single process.
+
+        Returns
+        =======
+        global_metric_dict : dict
+            Dictionary containing mean of tensor values gathered from all processes
+        """
+        output_dict = {}
+        for name, tensor in inputs.items():
+            
+            # Gather must be called from all the processes
+            # note that only the rank 0 needs a tensor_list to receive the "new_tensor"
+            if self.rank == 0:
+                tensor_list = [torch.zeros_like(tensor, device=self.device) for _ in range(self.n_gpus)]
+                torch.distributed.gather(tensor, gather_list=tensor_list, dst=0)
+            else :
+                torch.distributed.gather(tensor, dst=0) 
+
+            output_dict[name] = tensor
+        
+        return output_dict
+        
 
     def sub_train(self, loader, val_interval):
         """
@@ -254,7 +288,7 @@ class ReconstructionEngine(ABC):
             self.target = train_data[self.truth_key].to(self.device)                
             
             # Call forward: make a prediction & measure the average error using data = self.data
-            outputs = self.forward(forward_type='train')
+            outputs, _ = self.forward(forward_type='train')
             
             # Call backward: back-propagate error and update weights using loss = self.loss
             self.loss = outputs['loss']
@@ -338,6 +372,10 @@ class ReconstructionEngine(ABC):
             print("\n")
             log.info( f"\033[1;96m********** 🚀 Starting training for {epochs} epochs 🚀 **********\033[0m")
         
+        # Watching model
+        if self.wandb_run is not None:
+            self.wandb_run.watch(self.module, log='all', log_freq=val_interval)
+
         # initialize epoch and iteration counters
         #epoch                = 0 # (used by nick)  counter of epoch
         self.iteration       = 1 # (used by erwan) counter of the steps of all epochs
@@ -449,13 +487,13 @@ class ReconstructionEngine(ABC):
                 self.target = val_batch[self.truth_key].to(self.device)
                 
                 # evaluate the network
-                outputs = self.forward(forward_type='val') # output is a dictionnary with torch.tensors
+                outputs, _ = self.forward(forward_type='val') # output is a dictionnary with torch.tensors
                 
                 # In case of ddp we reduce outputs to get the global performance
                 # Note : It is currently done at each step to optimize gpu memory usage
                 # But this could also be perform at the end of the validation epoch
                 if self.is_distributed:
-                    outputs = self.get_synchronized(outputs)
+                    outputs = self.get_reduced(outputs)
 
                 # Detaching outputs tensors ( with .item() )
                 # otherwise all the data of the epoch will be load into GPU memory
@@ -491,7 +529,8 @@ class ReconstructionEngine(ABC):
             
             # Set the model to evaluation mode
             self.model.eval()
-            outputs_epoch_history = {'loss': 0., 'accuracy': 0.}
+            metrics_epoch_history = {'loss': 0., 'accuracy': 0.}
+            outputs_epoch_history = {'preds': [], 'indices': []} # Will be saved in numpy arrays
     
             # evaluation loop
             start_time = datetime.now()
@@ -499,52 +538,74 @@ class ReconstructionEngine(ABC):
             loader = self.data_loaders['test']            
             for step, eval_data in enumerate(loader):
                 
-                self.data = eval_data['data'].to(self.device)
+                self.data   = eval_data['data'].to(self.device)
                 self.target = eval_data[self.truth_key].to(self.device)
+                indices     = {'indices': eval_data['indice'].to(self.device)} # Not optimal. It uses gpu memory for nothing if running on single gpu.
 
-                outputs = self.forward(forward_type='test') # will ouput loss + accuracy + softmax of the preds (for classification)
-                if 'softmax' in outputs:
-                    outputs.pop('softmax')
-                    
+                metrics, outputs = self.forward(forward_type='test') # will ouput loss + accuracy + softmax of the preds (for classification)
                 # In case of ddp we reduce outputs to get the global performance
                 # Note : It is currently done at each step to optimize gpu memory usage
                 # But this could also be perform at the end of the validation epoch
                 if self.is_distributed:
-                    outputs = self.get_synchronized(outputs)
+                    metrics         = self.get_reduced(metrics)
+                    outputs         = self.get_gathered(outputs)
+                    indices         = self.get_gathered(indices)
 
-                outputs = {k: v.item() for k, v in outputs.items()}    
+                # metrics : Detach the tensors (loss + ..) from computational graph + put them on cpu
+                # outputs : item() cannot be call on multi-dim tensors, so we .detach() and put on cpu by ourselves
+                metrics = {k: v.item() for k, v in metrics.items()}    
+                outputs = {k: v.detach().cpu() for k, v in outputs.items()}
+                indices = indices['indices'].detach().cpu()
+
+                is_detached = not indices.requires_grad and indices.is_leaf   # Check if detached
+                is_on_cpu = indices.device == torch.device('cpu')       # Check if y is on CPU
+                assert is_detached or is_on_cpu, f"indices is still not detached and/or not on cpu"
+
 
                 if self.rank == 0: 
                     # --- Storing performances --- #
-                    outputs_epoch_history['loss']     += outputs['loss']
-                    outputs_epoch_history['accuracy'] += outputs['accuracy'] 
+                    metrics_epoch_history['loss']     += metrics['loss']
+                    metrics_epoch_history['accuracy'] += metrics['accuracy'] 
 
+                    # --- Concatenating indices and softmax to prepare saving --- # 
+                    outputs_epoch_history['indices'].append(indices)
+                    outputs_epoch_history['preds'].append(outputs['pred']) 
+                    
                     # --- Logs --- #
                     if ( step % report_interval == 0 ):
                         log.info(
                             f"  Step {step + 1}/{len(loader)}"
-                            f"  Evaluation {', '.join(f'{k}: {v:.5g}' for k, v in outputs.items())},"
+                            f"  Evaluation {', '.join(f'{k}: {v:.5g}' for k, v in metrics.items())},"
                         )
     
-        outputs_epoch_history['loss'] /= step + 1
-        outputs_epoch_history['accuracy'] /= step + 1 
+        metrics_epoch_history['loss'] /= step + 1 
+        metrics_epoch_history['accuracy'] /= step + 1 
         end_time = datetime.now()
         
         if self.rank == 0:
 
+            # --- Logs --- #
             log.info(f"Evaluation total time {end_time - start_time}")
-            
-            # --- Save overall evaluation results --- #
-            log.info("Saving Data...")
-            for k, v in outputs_epoch_history.items():
+            for k, v in metrics_epoch_history.items():
                 log.info(f"Average evaluation {k}: {v:.4f}")
-
-                np.save(self.dump_path + k + ".npy", v)
-
+                            
                 # --- Wandb --- #
                 if self.wandb_run is not None:
                     name = 'test_' + k
                     self.wandb_run.log({name: v})
+                
+            # --- Saving softmax + indices in .npy arrays --- #
+            log.info("Saving the data...")
+            for k, v in outputs_epoch_history.items():
+                save_path = self.dump_path + k + ".npy"
+                np.save(save_path, v)
+
+                if self.wandb_run is not None:
+                    wandb.save(save_path)
+
+            log.info("Done")
+
+
 
 
     def save_state(self, suffix="", name=None):
@@ -604,6 +665,7 @@ class ReconstructionEngine(ABC):
         
         # Open a file in read-binary mode
         with open(weight_file, 'rb') as f:
+            log.info("\n\n")
             log.info(f"Restoring state from {weight_file}\n")
            
             # prevent loading while DDP operations are happening

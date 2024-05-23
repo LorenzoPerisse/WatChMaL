@@ -91,6 +91,7 @@ class ClassifierEngine(ReconstructionEngine):
         dict
             Dictionary containing loss, predicted labels, softmax, accuracy, and raw model outputs
         """
+        metrics = {}
         outputs = {}
         grad_enabled = True if forward_type == 'train' else False
 
@@ -120,15 +121,15 @@ class ClassifierEngine(ReconstructionEngine):
             accuracy = (preds == self.target).sum() / len(self.target)
 
             # Add the metrics to the output dictionnary
-            outputs['loss'] = loss
-            outputs['accuracy'] = accuracy
+            metrics['loss']     = loss
+            metrics['accuracy'] = accuracy
 
             # Note : this softmax saving will be modified. Even maybe deleted
             if forward_type == 'test': # In testing mode we also save the softmax values
-                outputs['softmax'] = softmax
+                outputs['pred'] = model_out
 
-        # outputs contains tensors linked to the gradient graph (and on gpu is any) 
-        return outputs
+        # metrics and potentially outputs contains tensors linked to the gradient graph (and on gpu is any) 
+        return metrics, outputs
 
 
         # if not train:
