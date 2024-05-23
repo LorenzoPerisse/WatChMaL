@@ -77,7 +77,7 @@ def main(hydra_config, global_hydra_config):
         hydra_config = merge_config(hydra_config, wandb_config)
 
         # Save this dictionary to a yaml file to make it tracked by wandb
-        # (This is useless but mandatory by wandb.
+        # (This is useless but mandatory by wandb.)
         log_config_path = os.getcwd() + '/hydra_final_config.yaml'
         with open(log_config_path, 'w') as yaml_file:
             hydra_config_as_dict = OmegaConf.to_container(hydra_config, resolve=True)
@@ -130,7 +130,7 @@ def run(rank, gpu_list, dataset, wandb_run, hydra_config, global_hydra_config):
 
     # Initialize the group and configure the log in case of distributed training
     if len(gpu_list) > 1:
-        ddp_setup(rank, world_size=len(gpu_list)) # Keep len(gpu_list here). After can call get_world_size()
+        ddp_setup(rank, world_size=len(gpu_list), master_port=str(hydra_config.master_port)) # Keep len(gpu_list here). After can call get_world_size()
         configure_log(global_hydra_config.job_logging, global_hydra_config.verbose)
 
     device = 'cpu' if len(gpu_list) == 0 else rank    
@@ -140,11 +140,13 @@ def run(rank, gpu_list, dataset, wandb_run, hydra_config, global_hydra_config):
 
     # Instantiate the model (for each process if many) 
     torch.manual_seed(0)
-    model = build_model(
+    model, nb_params = build_model(
         model_config=hydra_config.model, 
         device=device, 
         use_ddp=(len(gpu_list) > 1)
     )
+    if wandb_run is not None:
+        wandb_run.log({'nb_params': nb_params})
 
     # Instantiate the engine (for each process if many) --- Let's do the model in the engine ?
     hydra_output_dir = os.getcwd()
@@ -198,7 +200,8 @@ def run(rank, gpu_list, dataset, wandb_run, hydra_config, global_hydra_config):
     for task, task_config in hydra_config.tasks.items():
         getattr(engine, task)(**task_config)
 
-    wandb.finish()
+    if wandb_run is not None:
+        wandb_run.finish()
 
     if len(gpu_list) > 1:
         destroy_process_group()
@@ -207,14 +210,14 @@ def run(rank, gpu_list, dataset, wandb_run, hydra_config, global_hydra_config):
     
 
 
-def ddp_setup(rank, world_size):
+def ddp_setup(rank, world_size, master_port: str):
     """
     Args:
         rank: Unique identifier of each process
         world_size: Total number of processes
     """
     os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "12355"
+    os.environ["MASTER_PORT"] = master_port
 
     init_process_group(
         backend="nccl", init_method='env://', rank=rank, world_size=world_size
