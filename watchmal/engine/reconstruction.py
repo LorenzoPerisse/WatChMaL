@@ -146,64 +146,6 @@ class ReconstructionEngine(ABC):
         #    self.data_loaders[name] = get_data_loader(self.datasets, **loader_config, is_distributed=is_distributed, seed=seed)
 
 
-    def get_synchronized_outputs(self, output_dict):
-        """
-        Gathers results from multiple processes using pytorch distributed operations for DistributedDataParallel
-
-        Parameters
-        ==========
-        output_dict : dict of torch.Tensor
-            Dictionary containing values that are tensor outputs of a single process.
-
-        Returns
-        =======
-        global_output_dict : dict of torch.Tensor
-            Dictionary containing concatenated tensor values gathered from all processes
-        """
-        global_output_dict = {}
-        for name, tensor in output_dict.items():
-            if self.is_distributed:
-                if self.rank == 0:
-                    tensor_list = [torch.zeros_like(tensor, device=self.device) for _ in range(self.n_gpus)]
-                    torch.distributed.gather(tensor, tensor_list)
-                    global_output_dict[name] = torch.cat(tensor_list).detach().cpu().numpy()
-                else:
-                    torch.distributed.gather(tensor, dst=0)
-            else:
-                global_output_dict[name] = tensor.detach().cpu().numpy()
-
-        return global_output_dict
-
-    def get_synchronized_metrics(self, metric_dict):
-        """
-        Gathers metrics from multiple processes using pytorch 
-        distributed operations for DistributedDataParallel
-
-        Parameters
-        ==========
-        metric_dict : dict of torch.Tensor
-            Dictionary containing values that are tensor outputs of a single process.
-
-        Returns
-        =======
-        global_metric_dict : dict
-            Dictionary containing mean of tensor values gathered from all processes
-        """
-        global_metric_dict = {}
-        
-        for name, tensor in zip(metric_dict.keys(), metric_dict.values()): # .items() ?
-            if self.is_distributed:
-
-                # Aggregate the tensors from all the processes (of the group created by init_process_group(..))
-                torch.distributed.reduce(tensor, 0) # default operation is adding all the 
-                
-                if self.rank == 0:
-                    global_metric_dict[name] = tensor.item() / self.n_gpus
-           
-            else:
-                global_metric_dict[name] = tensor.item()
-        
-        return global_metric_dict
 
     def get_reduced(self, outputs):
         """
