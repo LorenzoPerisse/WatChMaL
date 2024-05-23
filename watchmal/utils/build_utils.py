@@ -49,9 +49,11 @@ def build_model(model_config, device, use_ddp=False):
     Build the model and wrap it with SynBatchNorm and  config if using torch DDP
     """
     model = instantiate(model_config)
+    nb_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
     if ( device == 'cpu') or ( str(device) in ['0', 'cuda:0'] ):
         print()
-        log.info(f"Number of parameters in the model : {sum(p.numel() for p in model.parameters() if p.requires_grad)}\n")
+        log.info(f"Number of parameters in the model : {nb_parameters}\n")
 
     model.to(device)
 
@@ -62,7 +64,7 @@ def build_model(model_config, device, use_ddp=False):
         # Wrap the model with DistributedDataParallel mode
         model = DDP(model, device_ids=[device])
 
-    return model
+    return model, nb_parameters
 
 
 def merge_config(hydra_config, wandb_config):
