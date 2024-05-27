@@ -460,11 +460,11 @@ class ReconstructionEngine(ABC):
             
             return outputs_epoch_history
 
-    def evaluate(self, report_interval=20):
+    def evaluate(self, report_interval=20, batch_log=False):
         """Evaluate the performance of the trained model on the test set."""
         
         if self.rank == 0:
-            log.info(f"\n\nEnd of the run. Test epoch starting.\nOutput directory: {self.dump_path}")
+            log.info(f"\n\nTest epoch starting.\nOutput directory: {self.dump_path}")
 
         # Iterate over the validation set to calculate val_loss and val_acc
         with torch.no_grad():
@@ -519,6 +519,13 @@ class ReconstructionEngine(ABC):
                             f"  Step {step + 1}/{len(loader)}"
                             f"  Evaluation {', '.join(f'{k}: {v:.5g}' for k, v in metrics.items())},"
                         )
+
+                    # --- Wandb --- #
+                    if ( self.wandb_run is not None ) and batch_log:
+                        for k, v in metrics.items():
+                            self.wandb_run.log({
+                                'test_batch_' + k: v
+                            })
     
         metrics_epoch_history['loss'] /= step + 1 
         metrics_epoch_history['accuracy'] /= step + 1 
@@ -533,7 +540,7 @@ class ReconstructionEngine(ABC):
                             
                 # --- Wandb --- #
                 if self.wandb_run is not None:
-                    name = 'test_' + k
+                    name = 'test_epoch_' + k
                     self.wandb_run.log({name: v})
                 
             # --- Saving softmax + indices in .npy arrays --- #
