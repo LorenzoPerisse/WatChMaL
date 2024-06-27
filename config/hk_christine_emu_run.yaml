@@ -1,13 +1,16 @@
+master_port: 12355
 gpu_list: [] 
 kind: gnn
 
+launch_wandb: True
+
 defaults:
-    - data/dataset: hk_emu_christine
-    - data/transforms: emu_class_charge_time_norm_transforms # data/transforms is available for graphs only
+    - data/dataset: emu_hk_christine
+    - data/transforms: emu_norm_X_time_charge_Y_none 
 
     - tasks/train: graph_gpu_train_val
+    #- tasks/restore_best_state: restore_best_state
     #- tasks/evaluate: graph_test
-    - tasks/restore_best_state: restore_best_state
 
     - sampler@tasks.train.data_loaders.train.sampler_config: subset_random
     - sampler@tasks.train.data_loaders.validation.sampler_config: subset_sequential    
@@ -15,7 +18,8 @@ defaults:
 
     - model: emu_grant_config
     - engine: gnn_classifier
-    - optimizers@tasks.train.optimizers: adam
+    - optimizers@tasks.train.optimizers: christine_adam
     - loss@tasks.train.loss: cross_entropy
     
+    - wandb: wandb_config
     - _self_

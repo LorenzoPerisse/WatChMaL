@@ -1,0 +1,14 @@
+entity: erwanlbv
+project: WatChMaL
+
+tags: 
+  - "t_hits vs t_c"
+  - "features: t_hits"  
+  - "edges: hits"
+  - classification
+  - resgated
+  - small_model
+  - 'test'
+
+job_type: train_val
+notes: "Run to observe node features (time + hits) against (time + charge)"

@@ -5,11 +5,20 @@
 
 
 # Watchmal arguments
-split_path: /sps/t2k/eleblevec/updated_watchmal/index_lists/e_mu_500MeV_10each_train_val_test_index_list.npz
+# With more data in the train loader
+#split_path: /sps/t2k/eleblevec/updated_watchmal/index_lists/e_mu_500MeV_10each_train_val_test_index_list.npz
+
+# With more data in the test loader
+split_path: /sps/t2k/eleblevec/updated_watchmal/index_lists/debug_big_test_emu_500MeV_10each_train_val_test.npz
+
 fully_processed: True
 
 # When fully processed no need to re-compute the edges
 compute_edges_parameters: null
+
+label_set: [13, 11]
+target_names: ['mu-', 'e-']
+signal_key: 'e-'
 
 dataset_parameters:
 
@@ -17,7 +26,7 @@ dataset_parameters:
   _target_: watchmal.dataset.gnn.dataset_from_processed.DatasetFromProcessed
   
   # --- GraphDataset argument ---
-  graph_folder_path: /sps/t2k/eleblevec/datasets/graph_datasets/e_mu_10each_500Mev_X_hits_time_Y_type
+  graph_folder_path: /sps/t2k/eleblevec/datasets/graph_datasets/small/e_mu_10each_500Mev_X_hits_time_Y_type
   graph_file_names:
     - data.pt
   

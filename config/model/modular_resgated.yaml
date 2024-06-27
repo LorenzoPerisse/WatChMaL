@@ -1,0 +1,5 @@
+_target_: watchmal.model.grant_gnn.ResGateConv_v2
+in_channels: 2
+conv_in_channels: [128, 128]
+linear_out_features: [256, 512, 256, 128, 2]
+dropout: 0.2

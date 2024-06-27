@@ -71,7 +71,7 @@ class DatasetFromProcessed(InMemoryDataset):
         self.graph_file_names  = graph_file_names
 
         # What to apply to the data
-        self.transform     = transform
+        self.transform       = transform
 
         # Load the pre_transform argument
         f = self.graph_folder_path + '/processed/pre_transform.pt'

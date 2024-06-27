@@ -68,22 +68,15 @@ def main(hydra_config, global_hydra_config):
 
     gpu_list = hydra_config.gpu_list
 
+    # Initialize a wandb Run if asked
     if ( hydra_config.launch_wandb ) or ( 'WANDB_SWEEP_ID' in os.environ ):
         wandb_config_from_hydra = hydra_config.wandb
         wandb_config_from_hydra = OmegaConf.to_container(wandb_config_from_hydra, resolve=True)
 
         wandb_run    = wandb.init(**wandb_config_from_hydra)
-        wandb_config = wandb.config
+        wandb_config = wandb.config # get the config from the agent (if any)
         hydra_config = merge_config(hydra_config, wandb_config)
 
-        # Save this dictionary to a yaml file to make it tracked by wandb
-        # (This is useless but mandatory by wandb.)
-        log_config_path = os.getcwd() + '/hydra_final_config.yaml'
-        with open(log_config_path, 'w') as yaml_file:
-            hydra_config_as_dict = OmegaConf.to_container(hydra_config, resolve=True)
-            yaml.dump(hydra_config_as_dict, yaml_file, default_flow_style=False)        
-
-        wandb.save(log_config_path)
     else :
         wandb_run =  None
     
@@ -92,8 +85,25 @@ def main(hydra_config, global_hydra_config):
     # (after wandb.init() so it's stored in wandb logs)
     y = OmegaConf.to_yaml(hydra_config)
     log.info(f"Hydra config: \n{y}\n")
+
+    # Log top informations in wandb
     if wandb_run is not None :
+
+        try:
+            wandb_run.log({'SLURM_JOB_ID': int(os.getenv('SLURM_JOB_ID'))})
+        except:
+            log.info('No slurm job id')
         log.info(f"Wandb config : \n{wandb_config}\n")
+        
+        # Save hydra final dictionnary as a yaml file to store 
+        # it in wandb.
+        log_config_path = os.getcwd() + '/hydra_final_config.yaml'
+        with open(log_config_path, 'w') as yaml_file:
+            hydra_config_as_dict = OmegaConf.to_container(hydra_config, resolve=True)
+            yaml.dump(hydra_config_as_dict, yaml_file, default_flow_style=False)        
+
+        wandb.save(log_config_path)
+        
 
     # Create or get the dataset (only for gnn, for cnn see run(..))
     # It's only when the dataset has to be processed that 
@@ -160,9 +170,8 @@ def run(rank, gpu_list, dataset, wandb_run, hydra_config, global_hydra_config):
     )
 
     if hydra_config.kind == 'gnn':
-        engine.set_dataset(dataset)
-        engine.split_path = hydra_config.data.dataset.split_path
-    
+        engine.set_dataset(dataset, hydra_config.data.dataset)
+
     # keys to update in each dataloaders confic dictionnary           
     for task, task_config in hydra_config.tasks.items():
 
@@ -177,7 +186,7 @@ def run(rank, gpu_list, dataset, wandb_run, hydra_config, global_hydra_config):
                             task_config.pop("data_loaders"),
                         )
                     case 'gnn':                                                   
-                        engine.configure_data_loaders_v2(
+                        engine.configure_data_loaders(
                             task_config.pop("data_loaders"), 
                         )
                     case _:
@@ -198,6 +207,14 @@ def run(rank, gpu_list, dataset, wandb_run, hydra_config, global_hydra_config):
 
     # Perform tasks - not very user-friendly, to be removed in the futur
     for task, task_config in hydra_config.tasks.items():
+
+        # if 'train' in task:
+        #     task = 'train'
+        # elif 'validation' in task:
+        #     task = 'validate'
+        # elif 'test' in task:
+        #     task= 'evaluate'
+        
         getattr(engine, task)(**task_config)
 
     if wandb_run is not None:

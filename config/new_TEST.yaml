@@ -1,12 +1,11 @@
 gpu_list: [] 
 seed: null
 
-dump_path: ".outputs"
 kind: gnn
 launch_wandb: True
 
 defaults:
-    - data/dataset: TEST_cpu_graphs_charge_time
+    - data/dataset: hk_emu_christine
     - data/transforms: emu_class_charge_time_norm_transforms # data/transforms is available for graphs only
 
     - tasks/train: TEST_cpu_graph

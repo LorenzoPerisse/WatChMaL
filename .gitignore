@@ -114,3 +114,6 @@ kernprof.py
 .idea/
 __MACOSX/
 /outputs/
+
+# wandb
+wandb_scripts/wandb

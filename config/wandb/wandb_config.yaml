@@ -1,11 +1,19 @@
 
 
 entity: erwanlbv
-project: WatChMaL
+project: validation_christine
 
 tags: 
-  - test
-  - regression
+  - e/mu 360k
+  - classification
+  - resgated
+  - christine_model
 
-job_type: train_val_test
-notes: "Test of the ugly adapted regression engine class"
+job_type: train_val
+notes:  "Reproduction avec le même batch_size et les bonnes valeurs de normalisation"
+
+#"Run to observe node features (time + hits) against (time + charge)"
+#tags: 
+  # - "t_hits vs t_c"
+  # - "features: t_c"  
+  # - "edges: hits"
