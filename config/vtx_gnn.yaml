@@ -2,15 +2,15 @@ gpu_list: []
 master_port: 12355
 
 kind: gnn
-launch_wandb: False
+launch_wandb: True
 
 defaults:
-    - data/dataset: debug_graph_cpu_class_X_time_c_Y_type
-    - data/transforms: debug_emu_reg_charge_time_norm_transforms
+    - data/dataset: vtx_graph
+    - data/transforms: emu_reg_charge_time_norm_transforms
 
-    - tasks/train: debug_graph_cpu    
+    - tasks/train: vtx_train_gnn
     - tasks/restore_best_state: restore_best_state
-    - tasks/evaluate: debug_graph_cpu
+    - tasks/evaluate: vtx_evaluate_gnn
 
     - sampler@tasks.train.data_loaders.train.sampler_config: subset_random
     - sampler@tasks.train.data_loaders.validation.sampler_config: subset_sequential   

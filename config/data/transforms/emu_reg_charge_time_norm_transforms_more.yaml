@@ -1,0 +1,31 @@
+
+transforms:
+
+  # LogModif: 
+  #   _target_: watchmal.dataset.gnn.transformations.LogModif
+  #   feat_log: 
+  #     - [False, False, False, False, True]
+
+  ExtremaModif: 
+    _target_: watchmal.dataset.gnn.transformations.ExtremaModif
+    feat_extrem: 
+      - [False, False, False,  False, 50]
+      - [False, False, False,  False, False]
+
+  Normalize:
+    _target_: watchmal.dataset.gnn.transformations.Normalize
+        
+    feat_norm: 
+      # max time : ? , max_e = 1k MeV + 105 MeV (mu-)
+      - [3250, 3250, 3300, 500, 50] 
+      - [-3250, -3250, -3300, -600, 0] # min time : ?, min_e = 100 MeV + 500keV (e-)
+    
+    label_norm:
+      - [3250, 3250, 3300, 200]
+      - [-3250, -3250, -3300, -1100]
+
+  DataToWatchmalDict:
+    _target_: watchmal.dataset.gnn.transformations.ConvertAndToDict
+
+    feature_to_type: float32
+    target_to_type: float32

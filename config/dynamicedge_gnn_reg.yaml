@@ -1,24 +1,24 @@
 gpu_list: [] 
-master_port: 12355
 
 kind: gnn
-launch_wandb: False
+launch_wandb: True
 
 defaults:
     - data/dataset: debug_graph_cpu_class_X_time_c_Y_type
-    - data/transforms: debug_emu_reg_charge_time_norm_transforms
+    - data/transforms: emu_reg_charge_time_norm_transforms
 
     - tasks/train: debug_graph_cpu    
     - tasks/restore_best_state: restore_best_state
     - tasks/evaluate: debug_graph_cpu
 
+
     - sampler@tasks.train.data_loaders.train.sampler_config: subset_random
     - sampler@tasks.train.data_loaders.validation.sampler_config: subset_sequential   
     - sampler@tasks.evaluate.data_loaders.test.sampler_config: subset_sequential
 
-    - model: resgated_regression_lowenergy_normalization
+    - model: dynamicedge_reg_lowenergy
     - engine: debug_gnn_regresser
-    - loss@tasks.train.loss: huber
+    - loss@tasks.train.loss: mse
     - optimizers@tasks.train.optimizers: adam
     - wandb: wandb_config
 

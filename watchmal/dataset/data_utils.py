@@ -34,7 +34,6 @@ def get_dataset(dataset_config, transforms_config=None):
 
     if 'transforms' in transforms_config.keys():
         transform_list = []
-
         for _, trf_config in transforms_config['transforms'].items():
             transform = instantiate(trf_config)
             transform_list.append(transform)
@@ -43,7 +42,7 @@ def get_dataset(dataset_config, transforms_config=None):
 
     dataset = instantiate(
         dataset_config, 
-        transform=transform_compose
+        transform=transform_compose,
     )
     
     return dataset
@@ -85,12 +84,7 @@ def get_data_loader_v2(
 
         split_indices = np.load(split_path, allow_pickle=True)[split_key]
         sampler = instantiate(sampler_config, indices=split_indices, generator=generator, device=device)
-
-    # Ensure we have at least 1 step
-    if split_indices.shape[0] < batch_size:
-        batch_size = split_indices.shape[0]
-
-
+    
     # Wrappe the sampler is case of distributed training
     if is_distributed:
         ngpus = torch.distributed.get_world_size()
@@ -172,7 +166,29 @@ def get_data_loader(dataset,
     transforms = dataset["transforms"] if (("transforms" in dataset) and (dataset["transforms"] is not None)) else []
     transforms = (pre_transforms or []) + transforms + (post_transforms or [])
     dataset = instantiate(dataset, transforms=(transforms or None))
+    
+    
+    # Old code. Not understanding the if statement on split_path which is always mandatroy for all task
+    # if split_path is not None and split_key is not None:
+    #     # The sampler needs the split_indices for the dataset and a generator for the randomness
 
+    #     split_indices = np.load(split_path, allow_pickle=True)[split_key]
+       
+    #     generator= instantiate(sampler.generator, device=device)
+    #     generator.manual_seed(seed) # gen for val_loader and gen for train_loader will have the same seed, is it a problem ?
+
+    #     sampler = instantiate(sampler_config, indices=split_indices, device=device)
+
+    # else:
+    #     print('No splith path or split key')
+    #     sampler = instantiate(sampler)
+    
+    # if is_distributed:
+    #     ngpus = torch.distributed.get_world_size()
+
+    #     batch_size = max(int(batch_size / ngpus), 1)
+        
+    #     sampler = DistributedSamplerWrapper(sampler=sampler, seed=seed, drop_last=drop_last)
 
     # Define the sampler according to sampler_config
     if not seed: 

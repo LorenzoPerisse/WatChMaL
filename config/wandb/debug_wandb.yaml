@@ -1,11 +1,10 @@
 
 
 entity: erwanlbv
-project: Caverns_debug
+project: WatChMaL
 
 tags: 
   - debug
-  - classification
 
-job_type: val_train_restore_test
-notes: "Test des ROC etc de wandb"
+job_type: train_val_test
+notes: "Running another debug run :)"

@@ -20,7 +20,6 @@ from torch.nn.parallel import DistributedDataParallel
 from watchmal.dataset.data_utils import get_data_loader, get_data_loader_v2, get_dataset
 from watchmal.utils.logging_utils import CSVLog, setup_logging
 
-
 log = setup_logging(__name__)
 
 class ReconstructionEngine(ABC):
@@ -62,7 +61,6 @@ class ReconstructionEngine(ABC):
         self.step = 0
         self.iteration = 0
         self.best_validation_loss = 1.0e10
-        self.best_training_loss   = 1.0e10
 
         # variables for the dataset
         self.dataset      = dataset if dataset is not None else None
@@ -102,18 +100,6 @@ class ReconstructionEngine(ABC):
         #     self.val_log = CSVLog(self.dump_path + "log_val.csv") # Only rank 0 will save its performances at validation in a .csv file
 
 
-    @abstractmethod
-    def forward(self, forward_type):
-        pass 
-
-    @abstractmethod
-    def to_disk_data_reformat(self):
-        pass
-
-    @abstractmethod
-    def make_plots(self):
-        pass
-
 
     def configure_loss(self, loss_config):
         self.criterion = instantiate(loss_config)
@@ -127,27 +113,15 @@ class ReconstructionEngine(ABC):
         self.scheduler = instantiate(scheduler_config, optimizer=self.optimizer)
 
     
-    def set_dataset(self, dataset, dataset_config):
+    def set_dataset(self, dataset):
         
         if self.dataset is not None:
             print(f'Error : Dataset is already set in the engine of the process : {self.rank}')
             raise ValueError
 
         self.dataset = dataset
-        self.split_path = dataset_config.split_path
-        self.target_names = list(dataset_config.target_names)
 
-        # Get the feat_norm and target_norm values for later (used when displaying data)
-        for trf in dataset.transform.transforms: # dataset.transform is a T.Compose() object, to access the list of transform calling .transforms is needed
-            if trf.__class__.__name__ == 'Normalize':
-                ft_norm, target_norm = trf.feat_norm, trf.target_norm
-                break
-            
-        self.feat_norm, self.target_norm = ft_norm, target_norm
-
-
-
-    def configure_data_loaders(self, loaders_config):
+    def configure_data_loaders_v2(self, loaders_config):
         """
         Set up data loaders from loaders hydra configs for the data config, and a list of data loader configs.
 
@@ -156,7 +130,7 @@ class ReconstructionEngine(ABC):
         loaders_config
             Dictionnary specifying a list of dataloader configurations.
         """
-
+        #print(loaders_config)
         for name, loader_config in loaders_config.items():
            
             self.data_loaders[name] = get_data_loader_v2(
@@ -166,17 +140,14 @@ class ReconstructionEngine(ABC):
                 is_distributed=self.is_distributed,
                 **loader_config
             )
-
-        # Additional variables for plots and torch compatibility
-        
-
     
         # Instead, note the self.datatets
         # for name, loader_config in loaders_config.items():
         #    self.data_loaders[name] = get_data_loader(self.datasets, **loader_config, is_distributed=is_distributed, seed=seed)
 
 
-    def get_reduced(self, outputs, rank, n_gpus, op=torch.distributed.ReduceOp.SUM):
+
+    def get_reduced(self, outputs):
         """
         Gathers metrics from multiple processes using pytorch 
         distributed operations for DistributedDataParallel
@@ -207,7 +178,7 @@ class ReconstructionEngine(ABC):
                 # we need to divide by n_gpus to get the average value 
                 new_outputs[name] = tensor / self.n_gpus 
 
-            # new_outputs[name] = tensor.item() # to detach and convert the tensor for each of the processes.
+            #new_outputs[name] = tensor.item() # to detach and convert the tensor for each of the processes.
             # decision to do this after. get_reduce should only reduce, not detach (as the name suggest)
         
         return new_outputs
@@ -250,10 +221,7 @@ class ReconstructionEngine(ABC):
         Each process performs its own sub_train. Outputs are gathered in the main train() loop.
         """
         self.model.train() # Set model to training mode
-        
-        # Global logs dictionnary. Everything in it will be log by wandb
-        # Note : 'loss' key mandatory in Reg and Class engine.
-        metrics_epoch_history = {'loss': 0} 
+        outputs_epoch_history = {'loss': 0, 'accuracy': 0}
         
         for step, train_data in enumerate(loader):
             
@@ -262,141 +230,55 @@ class ReconstructionEngine(ABC):
             self.target = train_data[self.truth_key].to(self.device)                
             
             # Call forward: make a prediction & measure the average error using data = self.data
-            outputs, metrics  = self.forward(forward_type='train')
+            outputs, _ = self.forward(forward_type='train')
             
             # Call backward: back-propagate error and update weights using loss = self.loss
-            self.loss = metrics['loss']
+            self.loss = outputs['loss']
             self.backward()
 
-            # Run scheduler
+            # run scheduler
             if self.scheduler is not None:
                 self.scheduler.step()
             
             # If not detaching now ( with .item() ) all the data of the epoch will be load into GPU memory
             # v.item() converts torch.tensors to python floats (and detachs + moves to cpu)
-            metrics = {k: v.item() for k, v in metrics.items()} 
-            outputs = {k: v.item() for k, v in outputs.items()}
-
-            # For now we only monitor rank 0
-            if self.rank == 0:
-
-                # --- Logs in wandb --- #
-                if self.wandb_run is not None:
-                    self.wandb_run.log(
-                        {'train_batch_' + k: v for k, v in outputs.items()} | 
-                        {'train_batch_' + k: v for k, v in metrics.items()}
-                    )
-
-                # --- Keep track of metrics --- #
-                for k in metrics.keys():
-                    if not k in metrics_epoch_history.keys():
-                        metrics_epoch_history[k] = 0.
-                    metrics_epoch_history[k] += metrics[k]
-
+            outputs = {k: v.item() for k, v in outputs.items()} 
+            outputs_epoch_history['loss']     += outputs['loss']
+            outputs_epoch_history['accuracy'] += outputs['accuracy']
+            
+            #  --- Logs --- #
+            # log_entries = {
+            #     "iteration": (self.iteration + step), 
+            #     "epoch": self.epoch, 
+            #     **outputs
+            # }
+            #self.train_log.log(log_entries) # add logs in the .csv file (each process has its csv file)
+            
+            if self.wandb_run is not None:
+                self.wandb_run.log({
+                    'train_batch_loss': outputs['loss'],
+                    'train_batch_accuracy': outputs['accuracy']}
+                )
             # --- Display --- #
             if ( step  % val_interval == 0 ):
                 #log.info(f"GPU : {self.device} | Steps : {step + 1}/{len(loader)} | Iteration : {self.iteration + step} | Batch Size : {loader.batch_size}")
                 
                 if ( self.rank == 0 ) :
                     log.info(f"GPU : {self.device} | Steps : {step + 1}/{len(loader)} | Iteration : {self.iteration + step} | Batch Size : {loader.batch_size}")
-                    #log.info(f" Iteration {self.iteration + step}, train loss : {metrics['loss']:.5f}")
-                    log.info(f"Batch metrics {', '.join(f'{k}: {v:.5g}' for k, v in metrics.items())}")
+                    log.info(f" Iteration {self.iteration + step}, train loss : {outputs['loss']:.5f}, accuracy : {outputs['accuracy']:.5f}")
                     
         
         self.iteration += ( step + 1 )
 
-        if self.rank == 0:
-            # Mean over the epoch for each metric
-            for k in metrics_epoch_history.keys():
-                metrics_epoch_history[k] /= (step + 1)
+        # Take the mean over the epoch
+        outputs_epoch_history['loss'] /= (step + 1)
+        outputs_epoch_history['accuracy'] /= (step +1)
 
-        return metrics_epoch_history
+        return outputs_epoch_history
 
-    def sub_validate(self, loader, forward_type='val'):
-        """
-        loader: Loader on which to perform the validation.
-        forward_type: forward_type argument to pass to the forward method.
-            If set to 'test' the output will be two dictionnaries :
-            One containing the metrics, one containing the raw preds + targets
-            Otherwise it just return the metrics dictionnary and raw_preds and 
-            targets are not stored.
-        """
-
-        metrics_epoch_history = {'loss': 0}  # loss is mandatory for Class and Reg engine
-        to_disk_epoch_history = {'preds': [], 'targets': []} # Will be saved in numpy arrays
-        wandb_prefix = ""
-            
-        self.model.eval()                
-        with torch.no_grad():
-            
-            for step, val_batch in enumerate(loader):
-        
-                # Mount the batch of data to the device
-                self.data = val_batch['data'].to(self.device)
-                self.target = val_batch[self.truth_key].to(self.device)
-                
-                # evaluate the network
-                outputs, metrics = self.forward(forward_type=forward_type) # output is a dictionnary with torch.tensors
-                
-                # In case of ddp we reduce outputs to get the global performance
-                # Note : It is currently done at each step to optimize gpu memory usage
-                # But this could also be perform at the end of the validation epoch
-                
-                if forward_type == 'test':
-                    preds = {'pred': outputs.pop('pred')}
-
-                if self.is_distributed:
-                    metrics = self.get_reduced(metrics)
-                    outputs = self.get_reduced(outputs)
-
-                    if forward_type == 'test':
-                        self.target = self.get_gathered(self.target)
-                        preds   = self.get_gathered(preds)
-                
-                # Detaching outputs tensors ( with .item() )
-                # otherwise all the data of the epoch will be load into GPU memory
-                # v.item() converts torch.tensors to python floats (and detachs + moves to cpu)
-                metrics = {k: v.item() for k, v in metrics.items()} 
-                outputs = {k: v.item() for k, v in outputs.items()} 
-
-                if forward_type == 'test':
-                    self.target = self.target.detach().cpu().numpy() # we store them for roc curve etc..
-                    preds   = {k: v.detach().cpu().numpy() for k, v in preds.items()}
-                
-                if self.rank == 0: 
-
-                    # --- Storing for saving --- # 
-                    if forward_type == 'test':
-                        to_disk_epoch_history['targets'].append(self.target)
-                        to_disk_epoch_history['preds'].append(preds['pred']) 
-
-                    # --- Storing gobal performances --- #
-                    for k in metrics.keys():
-                        if not k in metrics_epoch_history.keys():
-                            metrics_epoch_history[k] = 0.
-                        metrics_epoch_history[k] += metrics[k]
-
-                    # --- Logs --- #
-                    if self.wandb_run is not None:
-
-                        # Pourquoi ne pas juste faire 
-                        # log_dict = outputs | metrics puis {.. in log_dict.items()} ?
-                        
-                        self.wandb_run.log(
-                            {wandb_prefix + 'val_batch_' + k: v for k, v in outputs.items()} | 
-                            {wandb_prefix + 'val_batch_' + k: v for k, v in metrics.items()}
-                        )
-
-            # Take the mean over the epoch 
-            if self.rank == 0:
-                for k in metrics_epoch_history.keys():
-                    metrics_epoch_history[k] /= (step + 1)
-        
-        if forward_type == 'test':
-            return metrics_epoch_history, to_disk_epoch_history
-        
-        return metrics_epoch_history
-
+    @abstractmethod
+    def forward(self, forward_type='train'):
+        pass 
 
     def backward(self):
         """Backward pass using the loss computed for a mini-batch"""
@@ -427,26 +309,25 @@ class ReconstructionEngine(ABC):
 
         log.info(f"Engine : {self.rank} | Dataloaders : {self.data_loaders}")
         if self.rank == 0:
+            #log.info(f"Training {epochs} epochs with {num_val_batches}-batch validation each {val_interval} iterations\n\n")
+            #log.info(f"Starting training for {epochs} epochs\n\n")
             print("\n")
             log.info( f"\033[1;96m********** 🚀 Starting training for {epochs} epochs 🚀 **********\033[0m")
         
+        # Watching model
+        if self.wandb_run is not None:
+            self.wandb_run.watch(self.module, log='all', log_freq=val_interval)
 
         # initialize epoch and iteration counters
-        #epoch               = 0 # (used by nick)  counter of epoch
+        #epoch                = 0 # (used by nick)  counter of epoch
         self.iteration       = 1 # (used by erwan) counter of the steps of all epochs
         self.step            = 0 # (used by nick)  counter of the steps of one epoch
         
-        self.best_training_loss   = np.inf
-        self.best_validation_loss = np.inf
-        
+        self.best_validation_loss = np.inf # used keep track of the validation loss
+
 
         train_loader = self.data_loaders["train"]
         val_loader   = self.data_loaders["validation"]
-
-        # Watching 
-        if self.wandb_run is not None:
-            self.wandb_run.watch(self.module, log='all', log_freq=val_interval * 2)
-            self.wandb_run.log({'max_datapoints_seen': epochs * len(train_loader) * train_loader.batch_size})
 
         # global loop for multiple epochs        
         for epoch in range(epochs):
@@ -464,7 +345,7 @@ class ReconstructionEngine(ABC):
             if self.is_distributed:
                 train_loader.sampler.set_epoch(self.epoch)
           
-            metrics_epoch_history = self.sub_train(train_loader, val_interval) # one train epoch.
+            outputs_epoch_history = self.sub_train(train_loader, val_interval) # one train epoch 
 
             epoch_end_time = datetime.now()
 
@@ -472,17 +353,13 @@ class ReconstructionEngine(ABC):
             if self.rank == 0:
                 log.info(f"(Train) Epoch : {epoch + 1} completed in {(epoch_end_time - epoch_start_time)} | Iteration : {self.iteration} ")
                 log.info(f"Total time since the beginning of the run : {epoch_end_time - start_run_time}")
-                log.info(f"Metrics over the (train) epoch {', '.join(f'{k}: {v:.5g}' for k, v in metrics_epoch_history.items())}")
+                log.info(f"Metrics over the (train) epoch {', '.join(f'{k}: {v:.5g}' for k, v in outputs_epoch_history.items())}")
 
-                # --- Wandb logs --- #
                 if self.wandb_run is not None:
-                    self.wandb_run.log(
-                        {'train_epoch_' + k: v for k, v in metrics_epoch_history.items()}
-                    )
-
-                    if metrics_epoch_history['loss'] < self.best_training_loss:
-                        self.best_training_loss = metrics_epoch_history['loss']
-                        self.wandb_run.log({'best_train_epoch_loss': self.best_training_loss})
+                    self.wandb_run.log({
+                        'train_epoch_loss': outputs_epoch_history['loss'],
+                        'train_epoch_accuracy': outputs_epoch_history['accuracy']
+                    })
 
             
             # ---- Starting the validation epoch ---- #
@@ -491,10 +368,10 @@ class ReconstructionEngine(ABC):
                 log.info("")
                 log.info(f" -- Validation epoch starting at {epoch_start_time}")
 
-            # if self.is_distributed:
-            #     val_loader.sampler.set_epoch(self.epoch) # Previously +1, why?
+            if self.is_distributed:
+                val_loader.sampler.set_epoch(self.epoch) # Previously +1, why?
                        
-            metrics_epoch_history = self.sub_validate(val_loader, forward_type='val') # also store preds for roc etc. ?
+            outputs_epoch_history = self.validate(val_loader) # one validation epoch
 
             epoch_end_time = datetime.now()
 
@@ -502,55 +379,88 @@ class ReconstructionEngine(ABC):
             if self.rank == 0:
                 log.info(f" -- Validation epoch completed in {epoch_end_time - epoch_start_time} | Iteration : {self.iteration}")
                 log.info(f" -- Total time since the beginning of the run : {epoch_end_time - start_run_time}")
-                log.info(f" -- Metrics over the (val) epoch {', '.join(f'{k}: {v:.5g}' for k, v in metrics_epoch_history.items())}")
-                            
+                log.info(f" -- Metrics over the (val) epoch {', '.join(f'{k}: {v:.5g}' for k, v in outputs_epoch_history.items())}")
+                                
+                # --- Logs ---- #
+                # log_entries = {
+                #     "iteration": self.iteration, 
+                #     "epoch": self.epoch, 
+                #     **outputs_epoch_history, 
+                #     "saved_best": False
+                # }
+
                 # --- Wandb --- #
                 if self.wandb_run is not None:
-                    self.wandb_run.log(
-                        {'val_epoch_' + k: v for k, v in metrics_epoch_history.items()}
-                    )
+                    self.wandb_run.log({
+                        'val_epoch_loss': outputs_epoch_history['loss'],
+                        'val_epoch_accuracy': outputs_epoch_history['accuracy']
+                    })
 
                 # Save if this is the best model so far
-                if metrics_epoch_history["loss"] < self.best_validation_loss:
+                if outputs_epoch_history["loss"] < self.best_validation_loss:
                     log.info(" ... Best validation loss so far!")
-                    self.best_validation_loss = metrics_epoch_history["loss"]
+                    self.best_validation_loss = outputs_epoch_history["loss"]
+                    #log_entries["saved_best"] = True
 
                     self.save_state(suffix="_BEST")
+
                 elif checkpointing:
                     # if checkpointing = True the model is saved at the end of each validation epoch
                     self.save_state()
- 
-    def validate(self, data_loader_name, forward_type, label_names, prefix_plot_name):
+                
+                #self.val_log.log(log_entries)
+                
 
-        val_loader = self.data_loaders[data_loader_name]
-        start_time = datetime.now()
+        #self.train_log.close() # Closing the .csv train file
+        # if self.rank == 0:
+        #     self.val_log.close() # Closing the .csv val file
 
-        if self.rank == 0:
-            log.info(f"\n\n Validation starting")
+    def validate(self, loader):
 
+        self.model.eval()
+        outputs_epoch_history = {'loss': 0., 'accuracy': 0.}
 
-        metrics_epoch_history = self.sub_validate(val_loader, forward_type=forward_type, from_train=False)
+        with torch.no_grad():
+            
+            for step, val_batch in enumerate(loader):
         
-        if forward_type == 'test':
-            metrics_epoch_history, to_disk_epoch_history = metrics_epoch_history
+                # Mount the batch of data to the device
+                self.data = val_batch['data'].to(self.device)
+                self.target = val_batch[self.truth_key].to(self.device)
+                
+                # evaluate the network
+                outputs, _ = self.forward(forward_type='val') # output is a dictionnary with torch.tensors
+                
+                # In case of ddp we reduce outputs to get the global performance
+                # Note : It is currently done at each step to optimize gpu memory usage
+                # But this could also be perform at the end of the validation epoch
+                if self.is_distributed:
+                    outputs = self.get_reduced(outputs)
 
-            if self.rank == 0:
+                # Detaching outputs tensors ( with .item() )
+                # otherwise all the data of the epoch will be load into GPU memory
+                # v.item() converts torch.tensors to python floats (and detachs + moves to cpu)
+                outputs = {k: v.item() for k, v in outputs.items()} 
 
-                self.make_plots(
-                    prefix_plot_name,
-                    targets=to_disk_epoch_history['targets'], 
-                    preds=to_disk_epoch_history['preds'], # This is litteraly of the size n_event, [] (whole dataset)...
-                )
+            
+                if self.rank == 0: 
+                    # --- Storing performances --- #
+                    outputs_epoch_history['loss']     += outputs['loss']
+                    outputs_epoch_history['accuracy'] += outputs['accuracy']
 
+                # --- Logs --- #
+                if self.wandb_run is not None:
+                    self.wandb_run.log({
+                        'val_batch_loss': outputs['loss'],
+                        'val_batch_accuracy': outputs['accuracy']})
 
+            # Take the mean over the epoch
+            outputs_epoch_history['loss'] /= (step + 1)
+            outputs_epoch_history['accuracy'] /= (step +1)
+            
+            return outputs_epoch_history
 
-        end_time = datetime.now()
-        if self.rank == 0:
-            log.info(f"Validation completed in {end_time - start_time} | Iteration check : {self.iteration}")
-            log.info(f"Total time since the beginning of the validation : {end_time - start_time}")
-            log.info(f"Metrics over the (val) epoch {', '.join(f'{k}: {v:.5g}' for k, v in metrics_epoch_history.items())}")
-    
-    def evaluate(self, prefix_for_plot_names, report_interval=20, batch_log=False):
+    def evaluate(self, report_interval=20, batch_log=False):
         """Evaluate the performance of the trained model on the test set."""
         
         if self.rank == 0:
@@ -561,8 +471,8 @@ class ReconstructionEngine(ABC):
             
             # Set the model to evaluation mode
             self.model.eval()
-            metrics_epoch_history = {'loss': 0.}
-            to_disk_epoch_history = {'preds': [], 'indices': [], 'targets': []} # Will be saved in numpy arrays. List seems the esiset way to this. Most efficient would be to init them as npy array the wanted size.
+            metrics_epoch_history = {'loss': 0., 'accuracy': 0.}
+            outputs_epoch_history = {'preds': [], 'indices': []} # Will be saved in numpy arrays
     
             # evaluation loop
             start_time = datetime.now()
@@ -574,96 +484,68 @@ class ReconstructionEngine(ABC):
                 self.target = eval_data[self.truth_key].to(self.device)
                 indices     = {'indices': eval_data['indice'].to(self.device)} # Not optimal. It uses gpu memory for nothing if running on single gpu.
 
-                outputs, metrics = self.forward(forward_type='test') # will ouput loss + accuracy + softmax of the preds (for classification)
-                
+                metrics, outputs = self.forward(forward_type='test') # will ouput loss + accuracy + softmax of the preds (for classification)
                 # In case of ddp we reduce outputs to get the global performance
                 # Note : It is currently done at each step to optimize gpu memory usage
-                # But this could also be perform at the end of the test epoch
-                # We remove pred from the output dict so we can call reduce on all
-                # the other outputs related var and call gather only on the real preds
-                preds = {'pred': outputs.pop('pred')}
+                # But this could also be perform at the end of the validation epoch
                 if self.is_distributed:
-                    metrics = self.get_reduced(metrics)
-                    #outputs = self.get_reduced(outputs) We only wandb monitor the outputs of rank 0
-                    preds   = self.get_gathered(preds)
-                    indices = self.get_gathered(indices)
-                    self.target = self.get_gathered(self.target)
+                    metrics         = self.get_reduced(metrics)
+                    outputs         = self.get_gathered(outputs)
+                    indices         = self.get_gathered(indices)
 
-                # metrics : Detach the tensors (loss + ..) from computational graph + put them on cpu 
-                # so they become native python types (not tensors anymore)
-                metrics = {k: v.item() for k, v in metrics.items()}
-                outputs = {k: v.item() for k, v in outputs.items()} # OUTPUTS DOES NOT CONTAINS RAW_OUPUTS (it is PREDS, see the .pop above)
+                # metrics : Detach the tensors (loss + ..) from computational graph + put them on cpu
+                # outputs : item() cannot be call on multi-dim tensors, so we .detach() and put on cpu by ourselves
+                metrics = {k: v.item() for k, v in metrics.items()}    
+                outputs = {k: v.detach().cpu() for k, v in outputs.items()}
+                indices = indices['indices'].detach().cpu()
 
-                # preds : item() cannot be call on multi-dim tensors, so we .detach() and put on cpu by ourselves  
-                # we also convert to numpy array because no need to keep this data as tensors for after
-                preds   = {k: v.detach().cpu().numpy() for k, v in preds.items()}
-                indices = indices['indices'].detach().cpu().numpy()
-                self.target = self.target.detach().cpu().numpy() # we store them for roc curve etc..
+                is_detached = not indices.requires_grad and indices.is_leaf   # Check if detached
+                is_on_cpu = indices.device == torch.device('cpu')       # Check if y is on CPU
+                assert is_detached or is_on_cpu, f"indices is still not detached and/or not on cpu"
 
 
                 if self.rank == 0: 
-
-                    # --- Wandb --- #
-                    if ( self.wandb_run is not None ) and batch_log:
-                        self.wandb_run.log(
-                            {'test_batch_' + k: v for k, v in metrics.items()} |
-                            {'test_batch_' + k: v for k, v in outputs.items()}
-                        )
-
                     # --- Storing performances --- #
-                    for k in metrics.keys():
-                        if not k in metrics_epoch_history.keys():
-                            metrics_epoch_history[k] = 0.
-                        metrics_epoch_history[k] += metrics[k]
+                    metrics_epoch_history['loss']     += metrics['loss']
+                    metrics_epoch_history['accuracy'] += metrics['accuracy'] 
 
                     # --- Concatenating indices and softmax to prepare saving --- # 
-                    to_disk_epoch_history['preds'].append(preds['pred']) 
-                    to_disk_epoch_history['indices'].append(indices)
-                    to_disk_epoch_history['targets'].append(self.target)
+                    outputs_epoch_history['indices'].append(indices)
+                    outputs_epoch_history['preds'].append(outputs['pred']) 
                     
-                    # --- Display --- #
+                    # --- Logs --- #
                     if ( step % report_interval == 0 ):
                         log.info(
                             f"  Step {step + 1}/{len(loader)}"
                             f"  Evaluation {', '.join(f'{k}: {v:.5g}' for k, v in metrics.items())},"
                         )
-            # end of the loader loop             
+
+                    # --- Wandb --- #
+                    if ( self.wandb_run is not None ) and batch_log:
+                        for k, v in metrics.items():
+                            self.wandb_run.log({
+                                'test_batch_' + k: v
+                            })
+    
+        metrics_epoch_history['loss'] /= step + 1 
+        metrics_epoch_history['accuracy'] /= step + 1 
         end_time = datetime.now()
         
         if self.rank == 0:
 
-            #
-            # -- Regarding metrics_output_history --- #
-            #
-            # Compute the mean over the test epoch of each metric
-            for k in metrics_epoch_history.keys():
-                metrics_epoch_history[k] /= step + 1
-
             # --- Logs --- #
             log.info(f"Evaluation total time {end_time - start_time}")
-            log.info(f"Metrics over the test epoch {', '.join(f'{k}: {v:.5g}' for k, v in metrics_epoch_history.items())}")
-
-            # --- Wandb --- #
-            if self.wandb_run is not None:
-                self.wandb_run.log(
-                    {'test_epoch_' + k: v for k, v in metrics_epoch_history.items()}
-                )
-
-            #
-            # --- Regarding to_disk_epoch_history --- #
-            #
-            to_disk_epoch_history = self.to_disk_data_reformat(**to_disk_epoch_history)
-
-            log.info(f"Starting to compute plots")
-            self.make_plots(
-                prefix_plot_name=prefix_for_plot_names,
-                targets=to_disk_epoch_history['targets'],
-                preds=to_disk_epoch_history['preds'],
-            )     
+            for k, v in metrics_epoch_history.items():
+                log.info(f"Average evaluation {k}: {v:.4f}")
+                            
+                # --- Wandb --- #
+                if self.wandb_run is not None:
+                    name = 'test_epoch_' + k
+                    self.wandb_run.log({name: v})
                 
             # --- Saving softmax + indices in .npy arrays --- #
             log.info("Saving the data...")
-            for k, v in to_disk_epoch_history.items():
+            for k, v in outputs_epoch_history.items():
                 save_path = self.dump_path + k + ".npy"
                 np.save(save_path, v)
 
@@ -671,6 +553,8 @@ class ReconstructionEngine(ABC):
                     wandb.save(save_path)
 
             log.info("Done")
+
+
 
 
     def save_state(self, suffix="", name=None):
@@ -711,17 +595,13 @@ class ReconstructionEngine(ABC):
         
         # Wandb Artifact to monitor models
         if self.wandb_run is not None:
-            artifact = wandb.Artifact(name=f"model-and-opti-checkpoints-{self.wandb_run.id}", type="model-and-opti")
+            artifact = wandb.Artifact(name=f"model-and-opti-checkpoints-{wandb.run.id}", type="model-and-opti")
             artifact.add_file(filename)
-
+            
             aliases = ['ite_' + str(self.iteration)]
             if suffix:
-                artifact.description = f"Validation loss : {self.best_validation_loss:.4g}"
-                
                 aliases.append(suffix)
-                self.wandb_run.log({'best_val_epoch_loss': self.best_validation_loss})
-
-            self.wandb_run.log_artifact(artifact, aliases=aliases)
+            wandb.log_artifact(artifact, aliases=aliases)
 
             log.info("Save state on wandb")
 
@@ -760,6 +640,6 @@ class ReconstructionEngine(ABC):
         if name is None:
             name = f"{self.__class__.__name__}_{self.module.__class__.__name__}"
             
-        full_path = f"{self.dump_path}{name}_BEST.pth"
+        full_path = name if complete_path else f"{self.dump_path}{name}_BEST.pth"
         self.restore_state(full_path)
 

@@ -1,2 +1,0 @@
-_target_: watchmal.engine.regression.RegressionEngine
-truth_key: 'target' # positions, energy handled by the same work key 'target'

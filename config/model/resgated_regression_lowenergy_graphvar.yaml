@@ -1,0 +1,11 @@
+_target_: watchmal.model.graph_and_nodes_gnn.ResGateConv_activation_graphvar
+in_channels: 5
+conv_activation: 
+  _target_: torch.nn.LeakyReLU
+  negative_slope: 0.1
+linear_activation:
+  _target_: torch.nn.SiLU
+conv_in_channels: [32, 64, 64]
+linear_out_features: [128, 32, 1]
+graph_var: 1
+dropout: 0

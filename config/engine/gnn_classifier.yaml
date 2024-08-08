@@ -1,9 +1,0 @@
-
-_target_: watchmal.engine.classification.ClassifierEngine
-
-truth_key: 'target'
-
-# prediction_threshold is only used 
-# when flatten_model_ouput=True
-flatten_model_output: False
-prediction_threshold: null 

@@ -1,19 +1,10 @@
 
 
-entity: erwanlbv
-project: validation_christine
+entity: cehrhardt
+project: WatChMaL
 
 tags: 
-  - e/mu 360k
-  - classification
-  - resgated
-  - christine_model
+  - radius 30
 
-job_type: train_val
-notes:  "Reproduction avec le même batch_size et les bonnes valeurs de normalisation"
-
-#"Run to observe node features (time + hits) against (time + charge)"
-#tags: 
-  # - "t_hits vs t_c"
-  # - "features: t_c"  
-  # - "edges: hits"
+job_type: training
+notes: "1.5M with hit x, y, z, t, c"

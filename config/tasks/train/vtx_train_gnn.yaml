@@ -1,4 +1,4 @@
-epochs: 100
+epochs: 200
 
 val_interval: 1000
 

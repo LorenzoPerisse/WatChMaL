@@ -5,7 +5,7 @@ that need to be done (any reason below)
 - outside the run(..) function in case of mulitprocessing
 """
 # Import for doc
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 # torch import
 import torch
@@ -48,7 +48,13 @@ def build_model(model_config, device, use_ddp=False):
     """
     Build the model and wrap it with SynBatchNorm and  config if using torch DDP
     """
-    model = instantiate(model_config)
+    OmegaConf.set_struct(model_config, False)
+    if 'conv_activation' in model_config:
+        conv_activation = instantiate(model_config.pop('conv_activation'))
+        linear_activation = instantiate(model_config.pop('linear_activation'))
+        model = instantiate(model_config, conv_activation = conv_activation, linear_activation = linear_activation)
+    else : 
+        model = instantiate(model_config)
     nb_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
     if ( device == 'cpu') or ( str(device) in ['0', 'cuda:0'] ):
