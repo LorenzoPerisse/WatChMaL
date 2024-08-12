@@ -1,0 +1,12 @@
+_target_: watchmal.model.grant_gnn.ResGateConv_normalization
+in_channels: 5
+conv_activation: 
+  _target_: torch.nn.SELU
+  # _target_: torch.nn.LeakyReLU
+  # negative_slope: 0.1
+linear_activation:
+  _target_: torch.nn.SiLU
+norm_method: GraphNorm
+conv_in_channels: [32, 64, 128]
+linear_out_features: [128, 64, 32, 4]
+dropout: 0.05

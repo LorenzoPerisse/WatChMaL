@@ -1,0 +1,10 @@
+
+
+entity: cehrhardt
+project: WatChMaL
+
+tags: 
+  - radius 30
+
+job_type: training
+notes: "1.5M with hit x, y, z, t, c"

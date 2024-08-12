@@ -1,0 +1,25 @@
+
+transforms:
+
+  Normalize:
+    _target_: watchmal.dataset.gnn.transformations.NormalizeGraphVar
+        
+    feat_nodes_norm: 
+      # max time : ? , max_e = 1k MeV + 105 MeV (mu-)
+      - [3250, 3250, 3300, 500, 400]
+      - [-3250, -3250, -3300, -600, 0] # min time : ?, min_e = 100 MeV + 500keV (e-)
+
+    feat_graph_norm: 
+      # max time : ? , max_e = 1k MeV + 105 MeV (mu-)
+      - [3300]
+      - [10] # min time : ?, min_e = 100 MeV + 500keV (e-)
+    
+    label_norm:
+      - [10]
+      - [10]
+
+  DataToWatchmalDict:
+    _target_: watchmal.dataset.gnn.transformations.ConvertAndToDict
+
+    feature_to_type: float32
+    target_to_type: float32

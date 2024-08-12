@@ -1,0 +1,7 @@
+_target_: watchmal.model.grant_gnn.ResGateConv_activation_norm
+in_channels: 5
+linear_activation:
+  _target_: torch.nn.SiLU
+conv_in_channels: [32, 64, 64]
+linear_out_features: [128, 32, 4]
+dropout: 0

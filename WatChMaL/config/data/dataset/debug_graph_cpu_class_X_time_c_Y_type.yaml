@@ -1,0 +1,30 @@
+# Note : 
+#   Config to use for a graph dataset
+#   that already has edges 
+#   (meaning : a fully processed dataset) .root -> graph -> graph with edges
+
+
+# Watchmal arguments
+split_path: /sps/t2k/cehrhardt/Caverns/index_lists/UnifVtx_electron_HK_10MeV_train_val_test_50k.npz
+fully_processed: True
+
+# When fully processed no need to re-compute the edges
+compute_edges_parameters: null
+
+dataset_parameters:
+
+  # --- Hydra arguments ---
+  _target_: watchmal.dataset.gnn.dataset_from_processed.DatasetFromProcessed
+  
+  # --- GraphDataset argument ---
+  graph_folder_path: /sps/t2k/cehrhardt/dataset/graph_50k_hitxyztc_t_xyzt_r12
+  graph_file_names:
+    - data.pt
+  
+  verbose: 1
+  
+  # --- End ---
+
+
+
+

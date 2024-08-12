@@ -1,0 +1,3 @@
+_target_: watchmal.loss.MSEWeighted.WeightedMSELoss
+
+weights: [1,1,1,0.8]
