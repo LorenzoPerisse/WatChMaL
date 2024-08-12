@@ -14,6 +14,8 @@ Unified framework for the training, testing and using of Machine Learning models
         1. [Hydra configuration framework](#hydra-configuration-framework)
         2. [WatChMaL configuration](#watchmal-configuration)
         3. [Configuration example](#configuration-example)
+    3. [Pregenerated graphs](#pregenerated-graphs)
+    4. [Sweep](#sweep)
 4. [Development](#development)
 
 
@@ -265,6 +267,17 @@ gpu_list:
 seed: 1234
 dump_path: ./outputs/
 ```
+
+## Pregenerated graphs
+
+You can generate graphs on the fly (done at run-time) or generate them once before the run. 
+For the latter option, follow these [steps](https://immense-yoke-7e6.notion.site/Generated-graph-7016407527ec4b5abbc9717d9c18036c).
+
+
+## Sweep
+
+To do a sweep, which is an automatized grid search over many hyperparameters, follow these [steps](https://immense-yoke-7e6.notion.site/Caverns-read-me-fe5b0b3c18024d95a21b7c979a7b80bc).
+
 
 # DEVELOPMENT
 
