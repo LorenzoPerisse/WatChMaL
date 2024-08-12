@@ -6,12 +6,12 @@ transforms:
         
     feat_norm: 
       # max time : ? , max_e = 1k MeV + 105 MeV (mu-)
-      - [3250, 3250, 3300, 500, 420]
-      - [-3250, -3250, -3300, -600, 0] # min time : ?, min_e = 100 MeV + 500keV (e-)
+      - [3250, 3250, 3300, 500, 400]
+      - [-3250, -3250, -3300, -510, 0] # min time : ?, min_e = 100 MeV + 500keV (e-)
     
     label_norm:
-      - [3250, 3250, 3300, 250]
-      - [-3250, -3250, -3300, -1200]
+      - [3250, 3250, 3300, 200]
+      - [-3250, -3250, -3300, -750]
 
   DataToWatchmalDict:
     _target_: watchmal.dataset.gnn.transformations.ConvertAndToDict

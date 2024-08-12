@@ -11,5 +11,5 @@ data_loaders:
     pin_memory: False
     seed: null
     num_workers: 4
-    batch_size: 10000
+    batch_size: 2048
     

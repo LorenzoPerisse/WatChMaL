@@ -5,7 +5,7 @@
 
 
 # Watchmal arguments
-split_path: /sps/t2k/cehrhardt/Caverns/index_lists/UnifVtx_electron_HK_10MeV_train_val_test_1.5M.npz
+split_path: /sps/t2k/lperisse/Soft/WatChMaL/watchmal_caverns/index_lists/UnifVtx_electron_HK_10MeV_train_val_test_50k.npz
 fully_processed: True
 
 # When fully processed no need to re-compute the edges
@@ -17,7 +17,7 @@ dataset_parameters:
   _target_: watchmal.dataset.gnn.dataset_from_processed.DatasetFromProcessed
     
   # --- GraphDataset argument ---
-  graph_folder_path: /sps/t2k/cehrhardt/dataset/graph_1.5M_hitxyztc_t_xyzt_r30
+  graph_folder_path: /sps/t2k/lperisse/Soft/WatChMaL/Graphs/graph_50k_hitxyztc_t_xyzt_r12
   graph_file_names:
     - data.pt
   
