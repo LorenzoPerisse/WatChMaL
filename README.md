@@ -22,13 +22,7 @@ Unified framework for the training, testing and using of Machine Learning models
 To download this repository use :
 
 ```
-git clone https://github.com/LorenzoPerisse/WatChMaL.git
-```
-
-Then switch to `clement_branch`.
-
-```
-git checkout clement_branch
+git clone -b clement_branch https://github.com/LorenzoPerisse/WatChMaL.git <destination-folder-name>
 ```
 
 
