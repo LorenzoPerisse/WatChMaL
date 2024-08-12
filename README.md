@@ -271,7 +271,11 @@ dump_path: ./outputs/
 ## Pregenerated graphs
 
 You can generate graphs on the fly (done at run-time) or generate them once before the run. 
-For the latter option, follow these [steps](https://immense-yoke-7e6.notion.site/Generated-graph-7016407527ec4b5abbc9717d9c18036c).
+For the latter option, copy the following Github repository:
+```bash
+git clone https://github.com/Erwanlbv/WCSimPackage/GraphDatasets.git
+```
+then follow these [steps](https://immense-yoke-7e6.notion.site/Generated-graph-7016407527ec4b5abbc9717d9c18036c) (or the ones from the Github repository).
 
 
 ## Sweep
