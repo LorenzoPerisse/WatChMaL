@@ -1,10 +1,10 @@
 # Water Cherenkov Machine Learning (WatChMaL)
 
-# Description
+# DESCRIPTION
 
 Unified framework for the training, testing and using of Machine Learning models for Water Cherenkov Detectors.
 
-# Table of Contents
+# TABLE OF CONTENTS
 
 1. [Installation](#installation)
 2. [Usage](#usage)
