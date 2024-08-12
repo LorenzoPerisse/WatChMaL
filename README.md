@@ -7,13 +7,14 @@ Unified framework for the training, testing and using of Machine Learning models
 # TABLE OF CONTENTS
 
 1. [Installation](#installation)
-2. [Usage](#usage)
+2. [Dependencies](#dependencies)
+3. [Usage](#usage)
     1. [Basic Usage](#basic-usage)
     2. [Configuration](#configuration)
         1. [Hydra configuration framework](#hydra-configuration-framework)
         2. [WatChMaL configuration](#watchmal-configuration)
         3. [Configuration example](#configuration-example)
-3. [Development](#development)
+4. [Development](#development)
 
 
 # INSTALLATION
@@ -271,7 +272,7 @@ seed: 1234
 dump_path: ./outputs/
 ```
 
-## Development
+# DEVELOPMENT
 
 The WatChMaL codebase follows a very similar structure to the configuration described above
 (in fact the configuration is structured to match the code).
