@@ -2,7 +2,7 @@
 
 # Description
 
-Unified framework for the training, testing and using Machine Learning models for Water Cherenkov Detectors.
+Unified framework for the training, testing and using of Machine Learning models for Water Cherenkov Detectors.
 
 # Table of Contents
 
@@ -15,18 +15,39 @@ Unified framework for the training, testing and using Machine Learning models fo
         3. [Configuration example](#configuration-example)
 3. [Development](#development)
 
-# Installation
 
-Requirements can be found in requirements.txt.
-The main requirements are [pytorch](pytorch.org), [numpy](numpy.org) and [hydra](hydra.cc).
+# INSTALLATION
 
-To download the repository use :
+To download this repository use :
 
 ```
-git clone https://github.com/WatChMaL/WatChMaL.git
+git clone https://github.com/LorenzoPerisse/WatChMaL.git
 ```
 
-# Usage
+Then switch to `clement_branch`.
+
+```
+git checkout clement_branch
+```
+
+
+# DEPENDENCIES
+
+Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) (or [Anaconda](https://docs.anaconda.com/anaconda/install/index.html))
+If you work on the CC-IN2P3 Lyon cluster, you should be able to install the baywatch environement by simply running:
+```bash
+conda env create -f environment_cclyon.yml
+conda activate baywatch
+```
+Please let us know if this does not work, so that we update the working environment.
+
+
+If you work on another cluster, package dependencies and how to install them can be found [here](https://erwan-leblevec.notion.site/Grant-Torch-Pyg-and-Cuda-requirements-e03ae602b58f47fda17c0de74fde4067).
+The main dependencies are [pytorch](pytorch.org), [numpy](numpy.org) and [hydra](hydra.cc).
+
+
+
+# USAGE
 ## Basic Usage
 
 From within the WatChMaL/WatChMaL repository, run `main.py` in Python 3.
